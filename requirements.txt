@@ -34,3 +34,9 @@ mcp==0.3.0
 # Additional utilities
 python-dotenv==1.0.0
 aiofiles==23.2.1
+# Remove any pdfkit or wkhtmltopdf references
+matplotlib>=3.7.0
+reportlab>=4.0.0
+Pillow>=10.0.0
+# Remove: seaborn (causing issues)
+

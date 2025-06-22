@@ -1,10 +1,10 @@
 import os
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 from typing import Optional
 
 class Settings(BaseSettings):
     # MCP Server
-    MCP_SERVER_URL: str = "http://localhost:8000"
+    MCP_SERVER_SCRIPT_PATH: str = "./server.py"  # Update this path!
     
     # NVIDIA NIM
     NVIDIA_NIM_API_KEY: str
@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     OCI_NAMESPACE: str
     OCI_BUCKET_NAME: str
     OCI_PROMPT_OBJECT_NAME: str = "analysis_prompt.txt"
+    OCI_COMPARTMENT_ID: str
+    OCI_LOG_GROUP_ID: str
+    OCI_LOG_ID: str
     
     # Scheduler
     ANALYSIS_INTERVAL_HOURS: int = 1
@@ -27,5 +30,6 @@ class Settings(BaseSettings):
     
     class Config:
         env_file = ".env"
+        case_sensitive = True
 
 settings = Settings()

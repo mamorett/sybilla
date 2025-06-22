@@ -1,0 +1,246 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oracle Logs Analysis</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .status-panel {
+            background: white;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .status-panel h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 25px;
+            background: #e0e0e0;
+            border-radius: 12px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            transition: width 0.5s ease;
+            border-radius: 12px;
+        }
+        
+        .status-message {
+            font-size: 16px;
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        
+        .status-ready { background: #e8f5e8; color: #2e7d32; }
+        .status-running { background: #e3f2fd; color: #1565c0; }
+        .status-error { background: #ffebee; color: #c62828; }
+        .status-success { background: #e8f5e8; color: #2e7d32; }
+        
+        .controls {
+            background: white;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        
+        button:hover {
+            background: #45a049;
+        }
+        
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+        
+        .results {
+            background: white;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        pre {
+            background: #f8f8f8;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Oracle Logs Analysis Dashboard</h1>
+    
+    <!-- Status Panel -->
+    <div class="status-panel">
+        <h2>📊 Analysis Status</h2>
+        <div id="status-message" class="status-message status-ready">Ready to start analysis</div>
+        <div class="progress-bar">
+            <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+        </div>
+        <div id="progress-text">Progress: 0%</div>
+    </div>
+    
+    <!-- Controls -->
+    <div class="controls">
+        <h2>🎮 Controls</h2>
+        <button id="test-btn" onclick="testMCP()">Test MCP Connection</button>
+        <button id="start-btn" onclick="startAnalysis()">Start Analysis</button>
+        <button onclick="refreshStatus()">Refresh Status</button>
+    </div>
+    
+    <!-- Results -->
+    <div id="results" class="results" style="display: none;">
+        <h2>📈 Results</h2>
+        <pre id="results-content"></pre>
+    </div>
+
+    <script>
+        let statusInterval;
+        
+        // Start status polling
+        function startStatusPolling() {
+            if (statusInterval) return;
+            
+            statusInterval = setInterval(async () => {
+                await refreshStatus();
+            }, 1000);
+        }
+        
+        // Stop status polling
+        function stopStatusPolling() {
+            if (statusInterval) {
+                clearInterval(statusInterval);
+                statusInterval = null;
+            }
+        }
+        
+        // Refresh status
+        async function refreshStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const status = await response.json();
+                updateStatusDisplay(status);
+            } catch (error) {
+                console.error('Status refresh error:', error);
+            }
+        }
+        
+        // Update status display
+        function updateStatusDisplay(status) {
+            const messageEl = document.getElementById('status-message');
+            const progressEl = document.getElementById('progress-fill');
+            const progressTextEl = document.getElementById('progress-text');
+            const testBtn = document.getElementById('test-btn');
+            const startBtn = document.getElementById('start-btn');
+            const resultsEl = document.getElementById('results');
+            const resultsContentEl = document.getElementById('results-content');
+            
+            // Update message
+            messageEl.textContent = status.message;
+            
+            // Update progress
+            progressEl.style.width = status.progress + '%';
+            progressTextEl.textContent = `Progress: ${status.progress}%`;
+            
+            // Update message style
+            messageEl.className = 'status-message ';
+            if (status.running) {
+                messageEl.className += 'status-running';
+                startStatusPolling();
+            } else if (status.error) {
+                messageEl.className += 'status-error';
+                stopStatusPolling();
+            } else if (status.progress === 100) {
+                messageEl.className += 'status-success';
+                stopStatusPolling();
+            } else {
+                messageEl.className += 'status-ready';
+                stopStatusPolling();
+            }
+            
+            // Update buttons
+            testBtn.disabled = status.running;
+            startBtn.disabled = status.running;
+            
+            // Show results
+            if (status.results) {
+                resultsEl.style.display = 'block';
+                resultsContentEl.textContent = JSON.stringify(status.results, null, 2);
+            }
+        }
+        
+        // Test MCP connection
+        async function testMCP() {
+            try {
+                startStatusPolling();
+                const response = await fetch('/api/test-mcp', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    alert('✅ MCP Connection Test Passed!');
+                } else {
+                    alert('❌ MCP Connection Test Failed: ' + result.message);
+                }
+            } catch (error) {
+                alert('❌ Test Error: ' + error.message);
+            }
+        }
+        
+        // Start analysis
+        async function startAnalysis() {
+            try {
+                startStatusPolling();
+                const response = await fetch('/api/start-analysis', { method: 'POST' });
+                const result = await response.json();
+                
+                if (!response.ok) {
+                    alert('❌ Failed to start: ' + result.error);
+                    stopStatusPolling();
+                }
+            } catch (error) {
+                alert('❌ Start Error: ' + error.message);
+                stopStatusPolling();
+            }
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshStatus();
+        });
+    </script>
+</body>
+</html>

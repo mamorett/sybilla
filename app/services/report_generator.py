@@ -1,302 +1,191 @@
+# app/services/report_generator.py
 import json
+import logging
 import os
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, List
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from matplotlib.backends.backend_pdf import PdfPages
 import seaborn as sns
-import pandas as pd
-from jinja2 import Environment, FileSystemLoader
-import pdfkit
-import plotly.graph_objects as go
-import plotly.express as px
-from plotly.offline import plot
-import base64
-from io import BytesIO
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Image
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
+import io
+from PIL import Image as PILImage
 
-from app.config import settings
+logger = logging.getLogger(__name__)
 
 class ReportGenerator:
     def __init__(self):
-        self.template_env = Environment(loader=FileSystemLoader('templates'))
-        self.output_dir = settings.REPORT_OUTPUT_DIR
-        os.makedirs(self.output_dir, exist_ok=True)
+        self.styles = getSampleStyleSheet()
+        self.setup_custom_styles()
         
-        # Set style for matplotlib
-        plt.style.use('seaborn-v0_8')
-        sns.set_palette("husl")
+        # Set matplotlib to use non-interactive backend
+        plt.switch_backend('Agg')
+        plt.style.use('default')  # Use default style to avoid seaborn issues
     
-    async def generate_pdf_report(self, analysis_data: Dict[str, Any], 
-                                nim_analysis: str) -> str:
-        """Generate comprehensive PDF report"""
+    def setup_custom_styles(self):
+        """Setup custom paragraph styles"""
+        self.styles.add(ParagraphStyle(
+            name='CustomTitle',
+            parent=self.styles['Heading1'],
+            fontSize=24,
+            spaceAfter=30,
+            alignment=TA_CENTER,
+            textColor=colors.darkblue
+        ))
         
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_filename = f"oracle_logs_analysis_{timestamp}.pdf"
-        report_path = os.path.join(self.output_dir, report_filename)
-        
-        # Parse NIM analysis if it's JSON
+        self.styles.add(ParagraphStyle(
+            name='CustomHeading',
+            parent=self.styles['Heading2'],
+            fontSize=16,
+            spaceAfter=12,
+            spaceBefore=20,
+            textColor=colors.darkblue
+        ))
+    
+    async def generate_pdf_report(self, analysis_data: Dict[str, Any], nim_analysis: Dict[str, Any]) -> str:
+        """Generate PDF report - simplified version"""
         try:
-            nim_results = json.loads(nim_analysis)
-        except:
-            nim_results = {"raw_analysis": nim_analysis}
-        
-        # Generate visualizations
-        charts = await self._generate_charts(analysis_data, nim_results)
-        
-        # Prepare template data
-        template_data = {
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "analysis_data": analysis_data,
-            "nim_analysis": nim_results,
-            "charts": charts,
-            "summary": self._create_executive_summary(analysis_data, nim_results)
-        }
-        
-        # Render HTML template
-        template = self.template_env.get_template('report_template.html')
-        html_content = template.render(**template_data)
-        
-        # Convert to PDF
-        options = {
-            'page-size': 'A4',
-            'margin-top': '0.75in',
-            'margin-right': '0.75in',
-            'margin-bottom': '0.75in',
-            'margin-left': '0.75in',
-            'encoding': "UTF-8",
-            'no-outline': None,
-            'enable-local-file-access': None
-        }
-        
-        pdfkit.from_string(html_content, report_path, options=options)
-        
-        return report_path
-    
-    async def _generate_charts(self, analysis_data: Dict[str, Any], 
-                             nim_results: Dict[str, Any]) -> Dict[str, str]:
-        """Generate various charts and return as base64 encoded strings"""
-        
-        charts = {}
-        
-        # 1. Country Traffic Distribution
-        charts['country_distribution'] = self._create_country_chart(analysis_data)
-        
-        # 2. Protocol Usage Chart
-        charts['protocol_usage'] = self._create_protocol_chart(analysis_data)
-        
-        # 3. Time Series Traffic Chart
-        charts['traffic_timeline'] = self._create_timeline_chart(analysis_data)
-        
-        # 4. Geographic Heatmap
-        charts['geographic_heatmap'] = self._create_geographic_chart(analysis_data)
-        
-        # 5. Security Risk Chart (if available in NIM analysis)
-        if 'visualization_data' in nim_results:
-            charts['security_analysis'] = self._create_security_chart(nim_results['visualization_data'])
-        
-        return charts
-    
-    def _create_country_chart(self, analysis_data: Dict[str, Any]) -> str:
-        """Create country traffic distribution chart"""
-        
-        try:
-            # Extract country data
-            country_data = analysis_data.get('current_period', {}).get('country_analytics', {})
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            report_path = f"/tmp/oracle_analysis_report_{timestamp}.pdf"
             
-            if not country_data or 'logs' not in country_data:
-                return self._create_placeholder_chart("No country data available")
+            logger.info("📊 Generating PDF report...")
+            
+            # Create the PDF document
+            doc = SimpleDocTemplate(report_path, pagesize=A4)
+            story = []
+            
+            # Title
+            story.append(Paragraph("Oracle Cloud Infrastructure Analysis Report", self.styles['CustomTitle']))
+            story.append(Spacer(1, 30))
+            
+            # Report info
+            story.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", self.styles['Normal']))
+            story.append(Paragraph(f"Analysis Period: {analysis_data.get('time_range', '24 hours')}", self.styles['Normal']))
+            story.append(Spacer(1, 20))
+            
+            # Summary statistics
+            story.append(Paragraph("Summary Statistics", self.styles['CustomHeading']))
+            stats = analysis_data.get("summary_statistics", {})
+            
+            summary_text = f"""
+            Total Log Entries: {stats.get('total_logs', 0):,}<br/>
+            Total Data Volume: {stats.get('total_bytes', 0) / (1024*1024):.1f} MB<br/>
+            Average Entry Size: {stats.get('avg_bytes_per_log', 0):.0f} bytes<br/>
+            Countries Analyzed: {len(analysis_data.get('country_analytics', {}).get('analytics', []))}<br/>
+            """
+            
+            story.append(Paragraph(summary_text, self.styles['Normal']))
+            story.append(Spacer(1, 20))
+            
+            # Country analytics
+            country_data = analysis_data.get('country_analytics', {}).get('analytics', [])
+            if country_data:
+                story.append(Paragraph("Top Countries by Traffic", self.styles['CustomHeading']))
+                
+                # Create table
+                table_data = [["Country", "Requests", "Bytes"]]
+                for item in country_data[:10]:  # Top 10
+                    table_data.append([
+                        item.get('country', 'Unknown'),
+                        f"{item.get('request_count', 0):,}",
+                        f"{item.get('total_bytes', 0):,}"
+                    ])
+                
+                table = Table(table_data)
+                table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ]))
+                
+                story.append(table)
+                story.append(Spacer(1, 20))
+            
+            # AI Analysis
+            story.append(PageBreak())
+            story.append(Paragraph("AI Analysis Results", self.styles['CustomHeading']))
+            
+            if isinstance(nim_analysis, dict):
+                for key, value in nim_analysis.items():
+                    if key not in ['raw_response']:  # Skip raw data
+                        story.append(Paragraph(f"<b>{key.replace('_', ' ').title()}:</b>", self.styles['Normal']))
+                        story.append(Paragraph(str(value), self.styles['Normal']))
+                        story.append(Spacer(1, 10))
+            else:
+                story.append(Paragraph(str(nim_analysis), self.styles['Normal']))
+            
+            # Generate simple chart
+            chart_path = self._create_simple_chart(country_data)
+            if chart_path and os.path.exists(chart_path):
+                story.append(PageBreak())
+                story.append(Paragraph("Traffic Distribution Chart", self.styles['CustomHeading']))
+                try:
+                    img = Image(chart_path, width=6*inch, height=4*inch)
+                    story.append(img)
+                except Exception as e:
+                    logger.warning(f"Could not add chart to PDF: {e}")
+                    story.append(Paragraph("Chart generation failed", self.styles['Normal']))
+                
+                # Cleanup chart file
+                try:
+                    os.remove(chart_path)
+                except:
+                    pass
+            
+            # Build PDF
+            doc.build(story)
+            
+            logger.info(f"✅ PDF report generated: {report_path}")
+            return report_path
+            
+        except Exception as e:
+            logger.error(f"❌ PDF generation failed: {e}")
+            raise
+    
+    def _create_simple_chart(self, country_data: List[Dict]) -> str:
+        """Create a simple chart"""
+        try:
+            if not country_data:
+                return None
+            
+            chart_path = f"/tmp/chart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
             
             # Prepare data
-            countries = []
-            counts = []
+            countries = [item.get('country', 'Unknown')[:10] for item in country_data[:8]]  # Top 8, short names
+            requests = [item.get('request_count', 0) for item in country_data[:8]]
             
-            for log in country_data['logs'][:10]:  # Top 10 countries
-                countries.append(log.get('country', 'Unknown'))
-                counts.append(log.get('count', 1))
+            # Create chart
+            fig, ax = plt.subplots(figsize=(10, 6))
+            bars = ax.bar(countries, requests, color=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f'])
             
-            # Create plotly chart
-            fig = px.bar(
-                x=countries, 
-                y=counts,
-                title="Top 10 Countries by Traffic Volume",
-                labels={'x': 'Country', 'y': 'Request Count'}
-            )
+            ax.set_title('Top Countries by Request Count', fontsize=14, fontweight='bold')
+            ax.set_xlabel('Country')
+            ax.set_ylabel('Request Count')
+            ax.tick_params(axis='x', rotation=45)
             
-            fig.update_layout(
-                showlegend=False,
-                height=400,
-                font=dict(size=12)
-            )
+            # Add value labels on bars
+            for bar in bars:
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2., height,
+                       f'{int(height):,}', ha='center', va='bottom', fontsize=8)
             
-            return self._fig_to_base64(fig)
+            plt.tight_layout()
+            plt.savefig(chart_path, dpi=150, bbox_inches='tight')
+            plt.close()
             
-        except Exception as e:
-            print(f"Error creating country chart: {e}")
-            return self._create_placeholder_chart("Error generating country chart")
-    
-    def _create_protocol_chart(self, analysis_data: Dict[str, Any]) -> str:
-        """Create protocol usage pie chart"""
-        
-        try:
-            protocol_data = analysis_data.get('current_period', {}).get('protocol_analytics', {})
-            
-            if not protocol_data or 'logs' not in protocol_data:
-                return self._create_placeholder_chart("No protocol data available")
-            
-            protocols = []
-            counts = []
-            
-            for log in protocol_data['logs']:
-                protocols.append(log.get('protocol', 'Unknown'))
-                counts.append(log.get('count', 1))
-            
-            fig = px.pie(
-                values=counts,
-                names=protocols,
-                title="Protocol Usage Distribution"
-            )
-            
-            fig.update_layout(height=400)
-            
-            return self._fig_to_base64(fig)
+            return chart_path
             
         except Exception as e:
-            print(f"Error creating protocol chart: {e}")
-            return self._create_placeholder_chart("Error generating protocol chart")
-    
-    def _create_timeline_chart(self, analysis_data: Dict[str, Any]) -> str:
-        """Create traffic timeline chart"""
-        
-        try:
-            # This is a simplified version - in reality, you'd extract timestamp data
-            # from logs and create a proper timeline
-            
-            # Generate sample timeline data
-            dates = pd.date_range(start='2024-01-01', periods=24, freq='H')
-            traffic = [100 + i * 10 + (i % 3) * 20 for i in range(24)]
-            
-            fig = px.line(
-                x=dates,
-                y=traffic,
-                title="Traffic Volume Over Time (Last 24 Hours)",
-                labels={'x': 'Time', 'y': 'Request Count'}
-            )
-            
-            fig.update_layout(height=400)
-            
-            return self._fig_to_base64(fig)
-            
-        except Exception as e:
-            print(f"Error creating timeline chart: {e}")
-            return self._create_placeholder_chart("Error generating timeline chart")
-    
-    def _create_geographic_chart(self, analysis_data: Dict[str, Any]) -> str:
-        """Create geographic distribution chart"""
-        
-        try:
-            city_data = analysis_data.get('current_period', {}).get('city_analytics', {})
-            
-            if not city_data or 'logs' not in city_data:
-                return self._create_placeholder_chart("No geographic data available")
-            
-            cities = []
-            counts = []
-            
-            for log in city_data['logs'][:15]:  # Top 15 cities
-                cities.append(log.get('city', 'Unknown'))
-                counts.append(log.get('count', 1))
-            
-            fig = px.bar(
-                x=counts,
-                y=cities,
-                orientation='h',
-                title="Top Cities by Traffic Volume",
-                labels={'x': 'Request Count', 'y': 'City'}
-            )
-            
-            fig.update_layout(height=500)
-            
-            return self._fig_to_base64(fig)
-            
-        except Exception as e:
-            print(f"Error creating geographic chart: {e}")
-            return self._create_placeholder_chart("Error generating geographic chart")
-    
-    def _create_security_chart(self, viz_data: Dict[str, Any]) -> str:
-        """Create security analysis chart from NIM results"""
-        
-        try:
-            # This would depend on the structure of visualization_data from NIM
-            # For now, create a sample security metrics chart
-            
-            metrics = ['Suspicious IPs', 'Failed Logins', 'Unusual Patterns', 'High Risk Countries']
-            values = [15, 23, 8, 12]  # Sample data
-            
-            fig = px.bar(
-                x=metrics,
-                y=values,
-                title="Security Risk Indicators",
-                color=values,
-                color_continuous_scale='Reds'
-            )
-            
-            fig.update_layout(height=400, showlegend=False)
-            
-            return self._fig_to_base64(fig)
-            
-        except Exception as e:
-            print(f"Error creating security chart: {e}")
-            return self._create_placeholder_chart("Error generating security chart")
-    
-    def _fig_to_base64(self, fig) -> str:
-        """Convert plotly figure to base64 string"""
-        img_bytes = fig.to_image(format="png", width=800, height=400)
-        img_base64 = base64.b64encode(img_bytes).decode()
-        return f"data:image/png;base64,{img_base64}"
-    
-    def _create_placeholder_chart(self, message: str) -> str:
-        """Create a placeholder chart with a message"""
-        fig = go.Figure()
-        fig.add_annotation(
-            text=message,
-            xref="paper", yref="paper",
-            x=0.5, y=0.5,
-            showarrow=False,
-            font=dict(size=16)
-        )
-        fig.update_layout(
-            height=400,
-            showlegend=False,
-            xaxis=dict(showgrid=False, showticklabels=False),
-            yaxis=dict(showgrid=False, showticklabels=False)
-        )
-        return self._fig_to_base64(fig)
-    
-    def _create_executive_summary(self, analysis_data: Dict[str, Any], 
-                                nim_results: Dict[str, Any]) -> Dict[str, Any]:
-        """Create executive summary from analysis data"""
-        
-        summary = {
-            "total_logs_analyzed": 0,
-            "unique_countries": 0,
-            "top_country": "Unknown",
-            "primary_protocol": "Unknown",
-            "key_findings": [],
-            "risk_level": "Medium"
-        }
-        
-        # Extract summary statistics
-        if 'summary_statistics' in analysis_data:
-            stats = analysis_data['summary_statistics']
-            summary.update({
-                "total_logs_analyzed": stats.get('total_requests', 0),
-                "unique_countries": stats.get('unique_countries', 0)
-            })
-        
-        # Extract key findings from NIM analysis
-        if isinstance(nim_results, dict):
-            if 'key_findings' in nim_results:
-                summary['key_findings'] = nim_results['key_findings']
-            if 'executive_summary' in nim_results:
-                summary['executive_summary'] = nim_results['executive_summary']
-        
-        return summary
+            logger.warning(f"Chart creation failed: {e}")
+            return None

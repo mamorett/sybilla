@@ -1,109 +1,257 @@
+# server.py - Fixed to match your Oracle client interface
 import asyncio
-from typing import Any, Dict, List
-from mcp.server import Server
-from mcp.types import Tool, TextContent
 import json
-
-# Simple imports since everything is in root
+import sys
+import logging
 from oracle_client import OracleLogsClient
-from models import LogEntry, LogResponse
 
-class OracleLogsMCPServer:
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+class MCPServer:
     def __init__(self):
-        self.server = Server("oracle-logs-mcp")
         self.oracle_client = OracleLogsClient()
-        self._setup_handlers()
+        self.initialized = False
+        
+    async def handle_initialize(self, request):
+        """Handle initialize request"""
+        logger.info("📋 Handling initialize request")
+        self.initialized = True
+        return {
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "tools": {"listChanged": False},
+                    "experimental": {}
+                },
+                "serverInfo": {
+                    "name": "oracle-logs-mcp",
+                    "version": "1.9.4"
+                }
+            }
+        }
     
-    def _setup_handlers(self):
-        """Set up MCP server handlers"""
+    async def handle_list_tools(self, request):
+        """Handle tools/list request"""
+        logger.info("📋 Handling list_tools request")
         
-        @self.server.list_tools()
-        async def list_tools() -> List[Tool]:
-            """List available tools"""
-            return [
-                Tool(
-                    name="search_logs_by_country",
-                    description="Search Oracle Cloud logs by country or country code",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "country": {"type": "string", "description": "Country name (e.g., 'United States')"},
-                            "country_code": {"type": "string", "description": "Country code (e.g., 'US')"},
-                            "time_range": {"type": "string", "description": "Time range (e.g., '24h', '7d')", "default": "24h"},
-                            "limit": {"type": "integer", "description": "Maximum number of results", "default": 10000}
-                        }
-                    }
-                ),
-                Tool(
-                    name="search_logs_by_location",
-                    description="Search Oracle Cloud logs within geographic bounds",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "lat_min": {"type": "number", "description": "Minimum latitude"},
-                            "lat_max": {"type": "number", "description": "Maximum latitude"},
-                            "lon_min": {"type": "number", "description": "Minimum longitude"},
-                            "lon_max": {"type": "number", "description": "Maximum longitude"},
-                            "time_range": {"type": "string", "description": "Time range", "default": "24h"},
-                            "limit": {"type": "integer", "description": "Maximum results", "default": 10000}
-                        },
-                        "required": ["lat_min", "lat_max", "lon_min", "lon_max"]
-                    }
-                ),
-                Tool(
-                    name="search_logs_by_ip",
-                    description="Search Oracle Cloud logs by IP address or range",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "ip_address": {"type": "string", "description": "Specific IP address"},
-                            "ip_range": {"type": "string", "description": "IP range in CIDR notation"},
-                            "time_range": {"type": "string", "description": "Time range", "default": "24h"},
-                            "limit": {"type": "integer", "description": "Maximum results", "default": 10000}
-                        }
-                    }
-                ),
-                Tool(
-                    name="get_traffic_analytics",
-                    description="Get aggregated traffic analytics from Oracle Cloud logs",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "time_range": {"type": "string", "description": "Time range", "default": "24h"},
-                            "group_by": {"type": "string", "description": "Group by field", "enum": ["country", "city", "isp", "protocol"], "default": "country"},
-                            "limit": {"type": "integer", "description": "Maximum results for analysis", "default": 10000}
-                        }
-                    }
-                )
-            ]
+        # Auto-initialize if not done yet
+        if not self.initialized:
+            logger.info("🔄 Auto-initializing server")
+            self.initialized = True
         
-        @self.server.call_tool()
-        async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
-            """Handle tool calls"""
+        return {
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {
+                "tools": [
+                    {
+                        "name": "get_traffic_analytics",
+                        "description": "Get comprehensive traffic analytics from Oracle logs with country, IP, and request statistics",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "time_range": {"type": "string", "default": "24h", "description": "Time range (e.g., '1h', '24h', '7d', '30d')"},
+                                "group_by": {"type": "string", "default": "country", "description": "Group by: country, city, isp, sensor"},
+                                "limit": {"type": "integer", "default": 1000, "description": "Maximum results"},
+                                "max_results": {"type": "integer", "default": 1000, "description": "Maximum results to process"}
+                            }
+                        }
+                    },
+                    {
+                        "name": "search_logs_by_country",
+                        "description": "Search Oracle logs filtered by specific country",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "country": {"type": "string", "description": "Country name (e.g., 'United States', 'Germany')"},
+                                "country_code": {"type": "string", "description": "Country code (e.g., 'US', 'DE')"},
+                                "time_range": {"type": "string", "default": "24h"},
+                                "limit": {"type": "integer", "default": 100},
+                                "max_results": {"type": "integer", "default": 100}
+                            }
+                        }
+                    },
+                    {
+                        "name": "search_logs_by_location",
+                        "description": "Search Oracle logs by geographic coordinates",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "lat_min": {"type": "number", "description": "Minimum latitude"},
+                                "lat_max": {"type": "number", "description": "Maximum latitude"},
+                                "lon_min": {"type": "number", "description": "Minimum longitude"},
+                                "lon_max": {"type": "number", "description": "Maximum longitude"},
+                                "time_range": {"type": "string", "default": "24h"},
+                                "limit": {"type": "integer", "default": 100},
+                                "max_results": {"type": "integer", "default": 100}
+                            },
+                            "required": ["lat_min", "lat_max", "lon_min", "lon_max"]
+                        }
+                    },
+                    {
+                        "name": "search_logs_by_ip",
+                        "description": "Search Oracle logs for specific IP address or range",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "ip_address": {"type": "string", "description": "Specific IP address"},
+                                "ip_range": {"type": "string", "description": "IP range (e.g., '192.168.1.0/24')"},
+                                "time_range": {"type": "string", "default": "24h"},
+                                "limit": {"type": "integer", "default": 100},
+                                "max_results": {"type": "integer", "default": 100}
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    
+    async def handle_call_tool(self, request):
+        """Handle tools/call request"""
+        # Auto-initialize if not done yet
+        if not self.initialized:
+            logger.info("🔄 Auto-initializing server for tool call")
+            self.initialized = True
+        
+        try:
+            params = request["params"]
+            name = params["name"]
+            arguments = params.get("arguments", {})
+            
+            logger.info(f"🔧 Executing tool: {name} with arguments: {arguments}")
+            
+            result = None
+            
+            if name == "get_traffic_analytics":
+                # Pass arguments as params dict to your Oracle client
+                result = await self.oracle_client.get_traffic_analytics(arguments)
+                
+            elif name == "search_logs_by_country":
+                # Pass arguments as params dict to your Oracle client
+                result = await self.oracle_client.search_logs_by_country(arguments)
+                
+            elif name == "search_logs_by_location":
+                # Pass arguments as params dict to your Oracle client
+                result = await self.oracle_client.search_logs_by_location(arguments)
+                        
+            elif name == "search_logs_by_ip":
+                # Pass arguments as params dict to your Oracle client
+                result = await self.oracle_client.search_logs_by_ip(arguments)
+                
+            else:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": request["id"],
+                    "error": {"code": -1, "message": f"Unknown tool: {name}"}
+                }
+            
+            logger.info(f"✅ Tool {name} executed successfully")
+            
+            # Convert LogEntry objects to dictionaries if needed
+            if isinstance(result, list) and result and hasattr(result[0], '__dict__'):
+                # Convert LogEntry objects to dicts
+                result = [entry.__dict__ if hasattr(entry, '__dict__') else entry for entry in result]
+            
+            return {
+                "jsonrpc": "2.0",
+                "id": request["id"],
+                "result": {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps(result, indent=2, default=str)
+                        }
+                    ]
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Tool execution failed: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            
+            return {
+                "jsonrpc": "2.0",
+                "id": request["id"],
+                "error": {"code": -1, "message": str(e)}
+            }
+    
+    async def handle_request(self, request):
+        """Route request to appropriate handler"""
+        method = request.get("method")
+        
+        if method == "initialize":
+            return await self.handle_initialize(request)
+        elif method == "tools/list":
+            return await self.handle_list_tools(request)
+        elif method == "tools/call":
+            return await self.handle_call_tool(request)
+        else:
+            return {
+                "jsonrpc": "2.0",
+                "id": request.get("id"),
+                "error": {"code": -32601, "message": f"Method not found: {method}"}
+            }
+
+async def main():
+    """Main server loop"""
+    logger.info("🚀 Starting Oracle Logs MCP Server (Direct Protocol Implementation)")
+    
+    server = MCPServer()
+    
+    logger.info("💡 MCP Server ready for connections")
+    logger.info("🔧 Available tools: get_traffic_analytics, search_logs_by_country, search_logs_by_location, search_logs_by_ip")
+    
+    try:
+        while True:
+            # Read request from stdin
+            line = sys.stdin.readline()
+            if not line:
+                break
+            
+            line = line.strip()
+            if not line:
+                continue
+            
             try:
-                if name == "search_logs_by_country":
-                    logs = await self.oracle_client.search_logs_by_country(arguments)
-                    response = LogResponse(logs=logs, total_count=len(logs))
-                    return [TextContent(type="text", text=json.dumps(response.dict(), indent=2, default=str))]
+                # Parse JSON request
+                request = json.loads(line)
+                logger.info(f"📨 Received request: {request.get('method', 'unknown')} (id: {request.get('id', 'none')})")
                 
-                elif name == "search_logs_by_location":
-                    logs = await self.oracle_client.search_logs_by_location(arguments)
-                    response = LogResponse(logs=logs, total_count=len(logs))
-                    return [TextContent(type="text", text=json.dumps(response.dict(), indent=2, default=str))]
+                # Handle request
+                response = await server.handle_request(request)
                 
-                elif name == "search_logs_by_ip":
-                    logs = await self.oracle_client.search_logs_by_ip(arguments)
-                    response = LogResponse(logs=logs, total_count=len(logs))
-                    return [TextContent(type="text", text=json.dumps(response.dict(), indent=2, default=str))]
+                # Send response
+                print(json.dumps(response), flush=True)
+                logger.info(f"📤 Sent response for request id: {response.get('id', 'none')}")
                 
-                elif name == "get_traffic_analytics":
-                    analytics = await self.oracle_client.get_traffic_analytics(arguments)
-                    return [TextContent(type="text", text=json.dumps(analytics, indent=2, default=str))]
-                
-                else:
-                    return [TextContent(type="text", text=f"Unknown tool: {name}")]
-                    
+            except json.JSONDecodeError as e:
+                logger.error(f"❌ Invalid JSON received: {e}")
+                error_response = {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32700, "message": "Parse error"}
+                }
+                print(json.dumps(error_response), flush=True)
+            
             except Exception as e:
-                error_msg = f"Error executing {name}: {str(e)}"
-                print(f"❌ {error_msg}")
-                return [TextContent(type="text", text=error_msg)]
+                logger.error(f"❌ Request handling failed: {e}")
+                error_response = {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32603, "message": f"Internal error: {str(e)}"}
+                }
+                print(json.dumps(error_response), flush=True)
+    
+    except KeyboardInterrupt:
+        logger.info("🛑 Server stopped by user")
+    except Exception as e:
+        logger.error(f"❌ Server failed: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    asyncio.run(main())
