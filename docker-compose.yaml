@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  oracle-logs-frontend:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - NVIDIA_NIM_API_KEY=${NVIDIA_NIM_API_KEY}
+      - NVIDIA_NIM_BASE_URL=${NVIDIA_NIM_BASE_URL}
+      - OCI_NAMESPACE=${OCI_NAMESPACE}
+      - OCI_BUCKET_NAME=${OCI_BUCKET_NAME}
+      - MCP_SERVER_URL=${MCP_SERVER_URL}
+    volumes:
+      - ./reports:/app/reports
+      - ./config:/app/config
+      - ~/.oci:/root/.oci:ro
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  redis_data:
