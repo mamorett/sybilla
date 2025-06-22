@@ -83,7 +83,7 @@ Format your response as structured JSON with the following sections:
         # Create summary statistics
         countries = {}
         ips = {}
-        protocols = {}
+        sensors = {}
         
         for log in logs[:1000]:  # Limit for prompt size
             # Count by country
@@ -94,9 +94,9 @@ Format your response as structured JSON with the following sections:
             ip = log.get("ip_address", "Unknown")
             ips[ip] = ips.get(ip, 0) + 1
             
-            # Count by protocol
-            protocol = log.get("protocol", "Unknown")
-            protocols[protocol] = protocols.get(protocol, 0) + 1
+            # Count by sensor
+            sensor = log.get("sensor", "Unknown")
+            sensors[sensor] = sensors.get(sensor, 0) + 1
         
         summary = f"""
 LOGS SUMMARY:
@@ -109,8 +109,8 @@ TOP COUNTRIES:
 TOP IP ADDRESSES:
 {self._format_top_items(ips, 10)}
 
-PROTOCOLS:
-{self._format_top_items(protocols, 5)}
+sensorS:
+{self._format_top_items(sensors, 5)}
 
 SAMPLE LOG ENTRIES:
 {self._format_sample_logs(logs[:5])}
@@ -126,7 +126,7 @@ SAMPLE LOG ENTRIES:
         """Format sample logs for display"""
         formatted = []
         for log in logs:
-            formatted.append(f"  - IP: {log.get('ip_address', 'N/A')}, Country: {log.get('country', 'N/A')}, Protocol: {log.get('protocol', 'N/A')}")
+            formatted.append(f"  - IP: {log.get('ip_address', 'N/A')}, Country: {log.get('country', 'N/A')}, sensor: {log.get('sensor', 'N/A')}")
         return "\n".join(formatted)
     
     async def close(self):

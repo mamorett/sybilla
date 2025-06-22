@@ -38,8 +38,8 @@ class AnalyticsService:
             time_range=time_range, group_by="city"
         )
         
-        protocol_analytics = await mcp_client.get_traffic_analytics(
-            time_range=time_range, group_by="protocol"
+        sensor_analytics = await mcp_client.get_traffic_analytics(
+            time_range=time_range, group_by="sensor"
         )
         
         # Get some specific country data for detailed analysis
@@ -50,7 +50,7 @@ class AnalyticsService:
         return {
             "country_analytics": country_analytics,
             "city_analytics": city_analytics,
-            "protocol_analytics": protocol_analytics,
+            "sensor_analytics": sensor_analytics,
             "us_detailed_logs": us_logs,
             "time_range": time_range
         }
@@ -61,7 +61,7 @@ class AnalyticsService:
         comparison = {
             "traffic_change": self._calculate_traffic_change(current, weekly),
             "new_countries": self._find_new_countries(current, weekly),
-            "protocol_shifts": self._analyze_protocol_shifts(current, weekly),
+            "sensor_shifts": self._analyze_sensor_shifts(current, weekly),
             "geographic_changes": self._analyze_geographic_changes(current, weekly)
         }
         
@@ -74,7 +74,7 @@ class AnalyticsService:
             "total_requests": 0,
             "unique_countries": 0,
             "unique_cities": 0,
-            "top_protocols": [],
+            "top_sensors": [],
             "geographic_distribution": {},
             "risk_indicators": []
         }
@@ -94,7 +94,7 @@ class AnalyticsService:
         return {
             "overall_change": 0.0,  # Placeholder
             "country_changes": {},
-            "protocol_changes": {}
+            "sensor_changes": {}
         }
     
     def _find_new_countries(self, current: Dict, weekly: Dict) -> List[str]:
@@ -102,8 +102,8 @@ class AnalyticsService:
         # Placeholder implementation
         return []
     
-    def _analyze_protocol_shifts(self, current: Dict, weekly: Dict) -> Dict[str, Any]:
-        """Analyze changes in protocol usage"""
+    def _analyze_sensor_shifts(self, current: Dict, weekly: Dict) -> Dict[str, Any]:
+        """Analyze changes in sensor usage"""
         return {"shifts": []}
     
     def _analyze_geographic_changes(self, current: Dict, weekly: Dict) -> Dict[str, Any]:

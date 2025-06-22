@@ -54,7 +54,7 @@ Analyze the provided Oracle Cloud Infrastructure logs and provide insights on:
 2. TRAFFIC ANALYSIS:
    - Analyze traffic volume and patterns
    - Identify peak usage times and geographic distribution
-   - Protocol usage analysis
+   - Sensor usage analysis
    - Bandwidth utilization patterns
 
 3. OPERATIONAL INSIGHTS:
