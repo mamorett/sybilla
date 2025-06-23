@@ -694,44 +694,44 @@ class MarkdownGenerator:
                     md_content.write(f"| {i} | {ip} | {requests:,} | {percentage:.1f}% |\n")
                 md_content.write("\n")
             
-            # IPs by Country
-            if ip_by_country:
-                md_content.write("### IP Distribution by Country\n\n")
-                md_content.write("| Country | Unique IPs | Top IP (Requests) |\n")
-                md_content.write("|---------|------------|-------------------|\n")
-                
-                for country, ips in list(ip_by_country.items())[:10]:
-                    unique_count = len(ips)
-                    top_ip = list(ips.items())[0] if ips else ("N/A", 0)
-                    md_content.write(f"| {country} | {unique_count} | {top_ip[0]} ({top_ip[1]:,}) |\n")
-                md_content.write("\n")
+        # IPs by Country - FIXED VERSION
+        if ip_by_country:
+            md_content.write("### IP Distribution by Country\n\n")
+            md_content.write("| Country | Unique IPs | Top IP (Requests) |\n")
+            md_content.write("|---------|------------|-------------------|\n")
             
-            # IPs by Sensor
-            if ip_by_sensor:
-                md_content.write("### IP Distribution by Sensor\n\n")
-                md_content.write("| Sensor | Unique IPs | Top IP (Requests) |\n")
-                md_content.write("|--------|------------|-------------------|\n")
-                
-                for sensor, ips in ip_by_sensor.items():
-                    unique_count = len(ips)
-                    top_ip = list(ips.items())[0] if ips else ("N/A", 0)
-                    md_content.write(f"| {sensor} | {unique_count} | {top_ip[0]} ({top_ip[1]:,}) |\n")
-                md_content.write("\n")
+            for country, data in list(ip_by_country.items())[:10]:
+                unique_count = data.get("unique_ips", 0)
+                top_ip = data.get("top_ip", "N/A")
+                md_content.write(f"| {country} | {unique_count} | {top_ip} |\n")
+            md_content.write("\n")
+        
+        # IPs by Sensor - FIXED VERSION
+        if ip_by_sensor:
+            md_content.write("### IP Distribution by Sensor\n\n")
+            md_content.write("| Sensor | Unique IPs | Top IP (Requests) |\n")
+            md_content.write("|--------|------------|-------------------|\n")
             
-            # IPs by City (if available)
-            if ip_by_city and len(ip_by_city) > 1:
-                md_content.write("### IP Distribution by City (Top 10)\n\n")
-                md_content.write("| City | Unique IPs | Top IP (Requests) |\n")
-                md_content.write("|------|------------|-------------------|\n")
-                
-                # Sort cities by unique IP count
-                sorted_cities = sorted(ip_by_city.items(), key=lambda x: len(x[1]), reverse=True)
-                
-                for city, ips in sorted_cities[:10]:
-                    unique_count = len(ips)
-                    top_ip = list(ips.items())[0] if ips else ("N/A", 0)
-                    md_content.write(f"| {city} | {unique_count} | {top_ip[0]} ({top_ip[1]:,}) |\n")
-                md_content.write("\n")
+            for sensor, data in ip_by_sensor.items():
+                unique_count = data.get("unique_ips", 0)
+                top_ip = data.get("top_ip", "N/A")
+                md_content.write(f"| {sensor} | {unique_count} | {top_ip} |\n")
+            md_content.write("\n")
+        
+        # IPs by City - FIXED VERSION
+        if ip_by_city and len(ip_by_city) > 1:
+            md_content.write("### IP Distribution by City (Top 10)\n\n")
+            md_content.write("| City | Unique IPs | Top IP (Requests) |\n")
+            md_content.write("|------|------------|-------------------|\n")
+            
+            # Sort cities by unique IP count
+            sorted_cities = sorted(ip_by_city.items(), key=lambda x: x[1].get("unique_ips", 0), reverse=True)
+            
+            for city, data in sorted_cities[:10]:
+                unique_count = data.get("unique_ips", 0)
+                top_ip = data.get("top_ip", "N/A")
+                md_content.write(f"| {city} | {unique_count} | {top_ip} |\n")
+            md_content.write("\n")
 
         else:
             md_content.write("No IP address data available in the current dataset.\n\n")
