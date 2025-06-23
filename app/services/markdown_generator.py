@@ -154,17 +154,22 @@ class MarkdownGenerator:
             if country_chart:
                 image_files.append(country_chart)
             
-            # 2. Protocol Usage Chart
-            protocol_chart = await self._create_protocol_chart(analysis_data, report_dir)
-            if protocol_chart:
-                image_files.append(protocol_chart)
+            # 2. Sensor Usage Chart (was protocol)
+            sensor_chart = await self._create_protocol_chart(analysis_data, report_dir)
+            if sensor_chart:
+                image_files.append(sensor_chart)
             
-            # 3. Traffic Timeline Chart (if time-series data available)
+            # 3. ISP Distribution Chart (NEW)
+            isp_chart = await self._create_isp_chart(analysis_data, report_dir)
+            if isp_chart:
+                image_files.append(isp_chart)
+            
+            # 4. Timeline Chart (if available)
             timeline_chart = await self._create_timeline_chart(analysis_data, report_dir)
             if timeline_chart:
                 image_files.append(timeline_chart)
             
-            # 4. Summary Statistics Chart
+            # 5. Summary Statistics Chart
             summary_chart = await self._create_summary_chart(analysis_data, report_dir)
             if summary_chart:
                 image_files.append(summary_chart)
@@ -173,19 +178,24 @@ class MarkdownGenerator:
             logger.warning(f"⚠️ Error generating some charts: {e}")
         
         return image_files
+
     
     async def _create_country_chart(self, analysis_data: Dict[str, Any], report_dir: str) -> Optional[str]:
         """Create country traffic distribution chart"""
         try:
-            country_data = analysis_data.get("country_analytics", {}).get("analytics", [])
-            if not country_data:
+            # FIX: Get data from correct structure
+            current_period = analysis_data.get("current_period", {})
+            country_analytics = current_period.get("country_analytics", {})
+            country_distribution = country_analytics.get("country_distribution", {})
+            
+            if not country_distribution:
                 return None
             
-            # Take top 10 countries
-            top_countries = country_data[:10]
+            # Sort and take top 10
+            sorted_countries = sorted(country_distribution.items(), key=lambda x: x[1], reverse=True)[:10]
             
-            countries = [item["country"] for item in top_countries]
-            requests = [item["total_requests"] for item in top_countries]
+            countries = [item[0] for item in sorted_countries]
+            requests = [item[1] for item in sorted_countries]
             
             plt.figure(figsize=(12, 8))
             bars = plt.bar(countries, requests, color=sns.color_palette("husl", len(countries)))
@@ -215,22 +225,26 @@ class MarkdownGenerator:
             return None
     
     async def _create_protocol_chart(self, analysis_data: Dict[str, Any], report_dir: str) -> Optional[str]:
-        """Create protocol usage pie chart"""
+        """Create sensor usage pie chart"""
         try:
-            protocol_data = analysis_data.get("protocol_analytics", {}).get("analytics", [])
-            if not protocol_data:
+            # FIX: Get sensor data from correct structure
+            current_period = analysis_data.get("current_period", {})
+            sensor_analytics = current_period.get("sensor_analytics", {})
+            sensor_distribution = sensor_analytics.get("sensor_distribution", {})
+            
+            if not sensor_distribution:
                 return None
             
-            protocols = [item["protocol"] for item in protocol_data]
-            requests = [item["total_requests"] for item in protocol_data]
+            sensors = list(sensor_distribution.keys())
+            requests = list(sensor_distribution.values())
             
             plt.figure(figsize=(10, 8))
-            colors = sns.color_palette("husl", len(protocols))
+            colors = sns.color_palette("husl", len(sensors))
             
-            wedges, texts, autotexts = plt.pie(requests, labels=protocols, autopct='%1.1f%%', 
-                                              colors=colors, startangle=90)
+            wedges, texts, autotexts = plt.pie(requests, labels=sensors, autopct='%1.1f%%', 
+                                            colors=colors, startangle=90)
             
-            plt.title('Traffic Distribution by Protocol', fontsize=16, fontweight='bold')
+            plt.title('Traffic Distribution by Sensor', fontsize=16, fontweight='bold')
             
             # Enhance text appearance
             for autotext in autotexts:
@@ -239,17 +253,18 @@ class MarkdownGenerator:
             
             plt.axis('equal')
             
-            chart_path = os.path.join(report_dir, "protocol_usage_chart.png")
+            chart_path = os.path.join(report_dir, "sensor_usage_chart.png")
             plt.savefig(chart_path, dpi=300, bbox_inches='tight')
             plt.close()
             
-            logger.info(f"📊 Protocol chart saved: {chart_path}")
+            logger.info(f"📊 Sensor chart saved: {chart_path}")
             return chart_path
             
         except Exception as e:
-            logger.warning(f"⚠️ Failed to create protocol chart: {e}")
+            logger.warning(f"⚠️ Failed to create sensor chart: {e}")
             plt.close()
             return None
+
     
     async def _create_timeline_chart(self, analysis_data: Dict[str, Any], report_dir: str) -> Optional[str]:
         """Create traffic timeline chart if time-series data is available"""
@@ -298,40 +313,42 @@ class MarkdownGenerator:
     async def _create_summary_chart(self, analysis_data: Dict[str, Any], report_dir: str) -> Optional[str]:
         """Create summary statistics chart"""
         try:
+            # FIX: Get stats from correct structure
             stats = analysis_data.get("summary_statistics", {})
+            current_period = analysis_data.get("current_period", {})
+            
             if not stats:
                 return None
             
-            # Prepare data for summary chart
+            # Prepare data for summary chart using correct field names
             metrics = []
             values = []
             
-            if stats.get("total_logs"):
-                metrics.append("Total Logs")
-                values.append(stats["total_logs"])
+            if stats.get("total_requests"):
+                metrics.append("Total Requests")
+                values.append(stats["total_requests"])
             
-            if stats.get("unique_ips"):
-                metrics.append("Unique IPs")
-                values.append(stats["unique_ips"])
-            
-            if stats.get("total_bytes"):
-                metrics.append("Total MB")
-                values.append(stats["total_bytes"] / (1024 * 1024))
-            
-            country_count = len(analysis_data.get("country_analytics", {}).get("analytics", []))
-            if country_count:
+            if stats.get("unique_countries"):
                 metrics.append("Countries")
-                values.append(country_count)
+                values.append(stats["unique_countries"])
             
-            protocol_count = len(analysis_data.get("protocol_analytics", {}).get("analytics", []))
-            if protocol_count:
-                metrics.append("Protocols")
-                values.append(protocol_count)
+            if stats.get("unique_sensors"):
+                metrics.append("Sensors")
+                values.append(stats["unique_sensors"])
+                
+            if stats.get("unique_isps"):
+                metrics.append("ISPs")
+                values.append(stats["unique_isps"])
+            
+            # Add data volume if available
+            if stats.get("total_bytes"):
+                metrics.append("Data (MB)")
+                values.append(stats["total_bytes"] / (1024 * 1024))
             
             if not metrics:
                 return None
             
-            plt.figure(figsize=(10, 6))
+            plt.figure(figsize=(12, 6))
             bars = plt.bar(metrics, values, color=sns.color_palette("viridis", len(metrics)))
             
             plt.title('Analysis Summary Statistics', fontsize=16, fontweight='bold')
@@ -363,6 +380,49 @@ class MarkdownGenerator:
             logger.warning(f"⚠️ Failed to create summary chart: {e}")
             plt.close()
             return None
+
+    async def _create_isp_chart(self, analysis_data: Dict[str, Any], report_dir: str) -> Optional[str]:
+        """Create ISP distribution chart"""
+        try:
+            current_period = analysis_data.get("current_period", {})
+            isp_analytics = current_period.get("isp_analytics", {})
+            isp_distribution = isp_analytics.get("isp_distribution", {})
+            
+            if not isp_distribution:
+                return None
+            
+            # Sort and take top 10
+            sorted_isps = sorted(isp_distribution.items(), key=lambda x: x[1], reverse=True)[:10]
+            
+            isps = [item[0] for item in sorted_isps]
+            requests = [item[1] for item in sorted_isps]
+            
+            plt.figure(figsize=(14, 8))
+            bars = plt.barh(isps, requests, color=sns.color_palette("plasma", len(isps)))
+            
+            plt.title('Top 10 ISPs by Request Volume', fontsize=16, fontweight='bold')
+            plt.xlabel('Total Requests', fontsize=12)
+            plt.ylabel('ISP', fontsize=12)
+            
+            # Add value labels on bars
+            for bar, value in zip(bars, requests):
+                plt.text(bar.get_width() + max(requests)*0.01, bar.get_y() + bar.get_height()/2,
+                        f'{value:,}', ha='left', va='center', fontweight='bold')
+            
+            plt.tight_layout()
+            
+            chart_path = os.path.join(report_dir, "isp_distribution_chart.png")
+            plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            logger.info(f"📊 ISP chart saved: {chart_path}")
+            return chart_path
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to create ISP chart: {e}")
+            plt.close()
+            return None
+
     
     async def _generate_markdown_content(
         self, 
@@ -378,10 +438,24 @@ class MarkdownGenerator:
         # Start building markdown content
         md_content = StringIO()
         
+        # EXTRACT DATA FROM CORRECT STRUCTURE
+        stats = analysis_data.get("summary_statistics", {})
+        current_period = analysis_data.get("current_period", {})
+        
+        # Get actual data from your structure
+        country_analytics = current_period.get("country_analytics", {})
+        country_distribution = country_analytics.get("country_distribution", {})
+        
+        sensor_analytics = current_period.get("sensor_analytics", {})
+        sensor_distribution = sensor_analytics.get("sensor_distribution", {})
+        
+        isp_analytics = current_period.get("isp_analytics", {})
+        isp_distribution = isp_analytics.get("isp_distribution", {})
+        
         # Header
         md_content.write(f"# Oracle Cloud Infrastructure Log Analysis Report\n\n")
         md_content.write(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n")
-        md_content.write(f"**Analysis Period:** {analysis_data.get('time_range', '24 hours')}\n\n")
+        md_content.write(f"**Analysis Period:** {current_period.get('time_range', '24 hours')}\n\n")
         
         # Table of Contents
         md_content.write("## Table of Contents\n\n")
@@ -399,27 +473,21 @@ class MarkdownGenerator:
         if isinstance(nim_analysis.get("executive_summary"), str):
             md_content.write(f"{nim_analysis['executive_summary']}\n\n")
         else:
-            stats = analysis_data.get("summary_statistics", {})
-            total_logs = stats.get("total_logs", 0)
+            total_logs = stats.get("total_requests", 0)
             md_content.write(f"This report analyzes {total_logs:,} log entries from Oracle Cloud Infrastructure. ")
-            md_content.write("The analysis covers traffic patterns, geographic distribution, protocol usage, and security insights.\n\n")
+            md_content.write("The analysis covers traffic patterns, geographic distribution, sensor usage, and security insights.\n\n")
         
-        # Key Metrics
+        # Key Metrics - FIX THE FIELD NAMES
         md_content.write("## Key Metrics\n\n")
-        stats = analysis_data.get("summary_statistics", {})
         
         md_content.write("| Metric | Value |\n")
         md_content.write("|--------|-------|\n")
-        md_content.write(f"| Total Log Entries | {stats.get('total_logs', 0):,} |\n")
-        md_content.write(f"| Unique IP Addresses | {stats.get('unique_ips', 0):,} |\n")
-        md_content.write(f"| Total Data Volume | {stats.get('total_bytes', 0) / (1024*1024):.1f} MB |\n")
-        md_content.write(f"| Countries Detected | {len(analysis_data.get('country_analytics', {}).get('analytics', []))} |\n")
-        md_content.write(f"| Protocols Used | {len(analysis_data.get('protocol_analytics', {}).get('analytics', []))} |\n")
-        
-        if stats.get('total_logs', 0) > 0:
-            avg_bytes = stats.get('total_bytes', 0) / stats.get('total_logs', 1)
-            md_content.write(f"| Average Request Size | {avg_bytes:.0f} bytes |\n")
-        
+        md_content.write(f"| Total Log Entries | {stats.get('total_requests', 0):,} |\n")
+        md_content.write(f"| Unique IP Addresses | {stats.get('unique_ips', 'N/A')} |\n")
+        md_content.write(f"| Total Data Volume | {stats.get('total_bytes', 0) / (1024*1024) if stats.get('total_bytes') else 0:.1f} MB |\n")
+        md_content.write(f"| Countries Detected | {stats.get('unique_countries', 0)} |\n")
+        md_content.write(f"| Sensors Used | {stats.get('unique_sensors', 0)} |\n")
+        md_content.write(f"| ISPs Detected | {stats.get('unique_isps', 0)} |\n")
         md_content.write("\n")
         
         # Visual Analytics
@@ -443,36 +511,56 @@ class MarkdownGenerator:
                     md_content.write("### Summary Statistics\n\n")
                     md_content.write(f"![Summary Statistics Chart]({image_name})\n\n")
         
-        # Geographic Analysis
+        # Geographic Analysis - FIX THE DATA SOURCE
         md_content.write("## Geographic Analysis\n\n")
-        country_data = analysis_data.get("country_analytics", {}).get("analytics", [])
-        if country_data:
+        if country_distribution:
             md_content.write("### Top Countries by Request Volume\n\n")
             md_content.write("| Rank | Country | Requests | Percentage |\n")
             md_content.write("|------|---------|----------|------------|\n")
             
-            total_requests = sum(item["total_requests"] for item in country_data)
-            for i, country in enumerate(country_data[:10], 1):
-                percentage = (country["total_requests"] / total_requests * 100) if total_requests > 0 else 0
-                md_content.write(f"| {i} | {country['country']} | {country['total_requests']:,} | {percentage:.1f}% |\n")
+            total_requests = sum(country_distribution.values())
+            sorted_countries = sorted(country_distribution.items(), key=lambda x: x[1], reverse=True)
+            
+            for i, (country, requests) in enumerate(sorted_countries[:10], 1):
+                percentage = (requests / total_requests * 100) if total_requests > 0 else 0
+                md_content.write(f"| {i} | {country} | {requests:,} | {percentage:.1f}% |\n")
             md_content.write("\n")
         else:
             md_content.write("No geographic data available in the current dataset.\n\n")
         
-        # Protocol Analysis
-        md_content.write("## Protocol Analysis\n\n")
-        protocol_data = analysis_data.get("protocol_analytics", {}).get("analytics", [])
-        if protocol_data:
-            md_content.write("### Protocol Usage Breakdown\n\n")
-            md_content.write("| Protocol | Requests | Data Volume (MB) |\n")
-            md_content.write("|----------|----------|------------------|\n")
+        # Sensor Analysis (instead of Protocol Analysis)
+        md_content.write("## Sensor Analysis\n\n")
+        if sensor_distribution:
+            md_content.write("### Sensor Usage Breakdown\n\n")
+            md_content.write("| Sensor | Requests | Percentage |\n")
+            md_content.write("|--------|----------|------------|\n")
             
-            for protocol in protocol_data:
-                data_mb = protocol.get("total_bytes", 0) / (1024 * 1024)
-                md_content.write(f"| {protocol['protocol']} | {protocol['total_requests']:,} | {data_mb:.1f} |\n")
+            total_requests = sum(sensor_distribution.values())
+            sorted_sensors = sorted(sensor_distribution.items(), key=lambda x: x[1], reverse=True)
+            
+            for sensor, requests in sorted_sensors:
+                percentage = (requests / total_requests * 100) if total_requests > 0 else 0
+                md_content.write(f"| {sensor} | {requests:,} | {percentage:.1f}% |\n")
             md_content.write("\n")
         else:
-            md_content.write("No protocol data available in the current dataset.\n\n")
+            md_content.write("No sensor data available in the current dataset.\n\n")
+        
+        # ISP Analysis (NEW SECTION)
+        md_content.write("## ISP Analysis\n\n")
+        if isp_distribution:
+            md_content.write("### Top ISPs by Request Volume\n\n")
+            md_content.write("| Rank | ISP | Requests | Percentage |\n")
+            md_content.write("|------|-----|----------|------------|\n")
+            
+            total_requests = sum(isp_distribution.values())
+            sorted_isps = sorted(isp_distribution.items(), key=lambda x: x[1], reverse=True)
+            
+            for i, (isp, requests) in enumerate(sorted_isps[:10], 1):
+                percentage = (requests / total_requests * 100) if total_requests > 0 else 0
+                md_content.write(f"| {i} | {isp} | {requests:,} | {percentage:.1f}% |\n")
+            md_content.write("\n")
+        else:
+            md_content.write("No ISP data available in the current dataset.\n\n")
         
         # Security Assessment
         md_content.write("## Security Assessment\n\n")

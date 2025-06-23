@@ -270,25 +270,21 @@ class AnalysisScheduler:
                 logger.info(f"🔍 RAW NIM RESPONSE REPR: {repr(nim_analysis)}")
                 logger.info(f"🔍 RAW NIM RESPONSE (first 500 chars): '{str(nim_analysis)[:500]}'")
 
-                # Validate NIM response
                 if isinstance(nim_analysis, str):
-                    logger.warning("⚠️ NIM returned string response, attempting to parse JSON")
-                    logger.info(f"🔍 FULL STRING RESPONSE: '{nim_analysis}'")  # This will show if it's empty
-
-                
-                # Validate NIM response
-                if isinstance(nim_analysis, str):
-                    logger.warning("⚠️ NIM returned string response, attempting to parse JSON")
+                    logger.warning("⚠️ NIM returned string response, attempting to extract JSON")
                     try:
-                        nim_analysis = json.loads(nim_analysis)
-                    except json.JSONDecodeError as e:
-                        logger.error(f"❌ Failed to parse NIM JSON response: {e}")
-                        nim_analysis = {
-                            "executive_summary": nim_analysis[:500] + "..." if len(nim_analysis) > 500 else nim_analysis,
-                            "risk_level": "Medium",
-                            "recommendations": ["Manual review of analysis results required"],
-                            "error": "JSON parsing failed"
-                        }
+                        # Extract JSON from markdown code block
+                        import re
+                        json_match = re.search(r'```json\s*(\{.*?\})\s*```', nim_analysis, re.DOTALL)
+                        if json_match:
+                            json_str = json_match.group(1)
+                            logger.info(f"✅ Extracted JSON from markdown ({len(json_str)} chars)")
+                            nim_analysis = json.loads(json_str)
+                        else:
+                            logger.error("❌ No JSON code block found in response")
+                            raise ValueError("No JSON found in markdown response")
+                    except (json.JSONDecodeError, ValueError) as e:
+                        logger.error(f"❌ Failed to extract/parse JSON from markdown: {e}")
                 
                 if not isinstance(nim_analysis, dict):
                     logger.error(f"❌ Invalid NIM response type: {type(nim_analysis)}")
