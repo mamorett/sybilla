@@ -1,4 +1,4 @@
-# server.py - Fixed to match your Oracle client interface
+# server.py - Fixed to handle both single and continuous requests
 import asyncio
 import json
 import sys
@@ -38,7 +38,6 @@ class MCPServer:
         """Handle tools/list request"""
         logger.info("📋 Handling list_tools request")
         
-        # Auto-initialize if not done yet
         if not self.initialized:
             logger.info("🔄 Auto-initializing server")
             self.initialized = True
@@ -112,7 +111,6 @@ class MCPServer:
     
     async def handle_call_tool(self, request):
         """Handle tools/call request"""
-        # Auto-initialize if not done yet
         if not self.initialized:
             logger.info("🔄 Auto-initializing server for tool call")
             self.initialized = True
@@ -122,24 +120,27 @@ class MCPServer:
             name = params["name"]
             arguments = params.get("arguments", {})
             
-            logger.info(f"🔧 Executing tool: {name} with arguments: {arguments}")
+            # ADD THIS DETAILED LOGGING
+            logger.info(f"🔧 Executing tool: {name}")
+            logger.info(f"📋 Full request: {json.dumps(request, indent=2)}")
+            logger.info(f"📋 Arguments received: {json.dumps(arguments, indent=2)}")
             
             result = None
             
             if name == "get_traffic_analytics":
-                # Pass arguments as params dict to your Oracle client
+                logger.info(f"🔍 Calling oracle_client.get_traffic_analytics with: {arguments}")
                 result = await self.oracle_client.get_traffic_analytics(arguments)
+                logger.info(f"📊 Oracle client returned: {type(result)} with {len(result) if isinstance(result, (list, dict)) else 'unknown'} items")
                 
             elif name == "search_logs_by_country":
-                # Pass arguments as params dict to your Oracle client
+                logger.info(f"🔍 Calling oracle_client.search_logs_by_country with: {arguments}")
                 result = await self.oracle_client.search_logs_by_country(arguments)
-                
+                logger.info(f"📊 Oracle client returned: {type(result)} with {len(result) if isinstance(result, (list, dict)) else 'unknown'} items")
+
             elif name == "search_logs_by_location":
-                # Pass arguments as params dict to your Oracle client
                 result = await self.oracle_client.search_logs_by_location(arguments)
                         
             elif name == "search_logs_by_ip":
-                # Pass arguments as params dict to your Oracle client
                 result = await self.oracle_client.search_logs_by_ip(arguments)
                 
             else:
@@ -153,7 +154,6 @@ class MCPServer:
             
             # Convert LogEntry objects to dictionaries if needed
             if isinstance(result, list) and result and hasattr(result[0], '__dict__'):
-                # Convert LogEntry objects to dicts
                 result = [entry.__dict__ if hasattr(entry, '__dict__') else entry for entry in result]
             
             return {
@@ -198,7 +198,7 @@ class MCPServer:
             }
 
 async def main():
-    """Main server loop"""
+    """Main server loop - handles both single requests and continuous operation"""
     logger.info("🚀 Starting Oracle Logs MCP Server (Direct Protocol Implementation)")
     
     server = MCPServer()
@@ -207,8 +207,33 @@ async def main():
     logger.info("🔧 Available tools: get_traffic_analytics, search_logs_by_country, search_logs_by_location, search_logs_by_ip")
     
     try:
+        # Check if we have input waiting (for single request mode)
+        import select
+        if select.select([sys.stdin], [], [], 0.1)[0]:
+            # Single request mode - read all input at once
+            input_data = sys.stdin.read().strip()
+            if input_data:
+                try:
+                    request = json.loads(input_data)
+                    logger.info(f"📨 Single request: {request.get('method', 'unknown')} (id: {request.get('id', 'none')})")
+                    
+                    response = await server.handle_request(request)
+                    print(json.dumps(response), flush=True)
+                    logger.info(f"📤 Sent response for request id: {response.get('id', 'none')}")
+                    return
+                    
+                except json.JSONDecodeError as e:
+                    logger.error(f"❌ Invalid JSON received: {e}")
+                    error_response = {
+                        "jsonrpc": "2.0",
+                        "id": None,
+                        "error": {"code": -32700, "message": "Parse error"}
+                    }
+                    print(json.dumps(error_response), flush=True)
+                    return
+        
+        # Continuous mode - read line by line
         while True:
-            # Read request from stdin
             line = sys.stdin.readline()
             if not line:
                 break
@@ -218,14 +243,10 @@ async def main():
                 continue
             
             try:
-                # Parse JSON request
                 request = json.loads(line)
                 logger.info(f"📨 Received request: {request.get('method', 'unknown')} (id: {request.get('id', 'none')})")
                 
-                # Handle request
                 response = await server.handle_request(request)
-                
-                # Send response
                 print(json.dumps(response), flush=True)
                 logger.info(f"📤 Sent response for request id: {response.get('id', 'none')}")
                 

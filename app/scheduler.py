@@ -11,7 +11,7 @@ from app.services.mcp_client import MCPClient
 from app.services.nvidia_nim_client import NVIDIANIMClient
 from app.services.oci_storage_client import OCIStorageClient
 from app.services.analytics_services import AnalyticsService
-from app.services.report_generator import ReportGenerator  # TODO: Create this module
+from app.services.markdown_generator import MarkdownGenerator  # Changed from ReportGenerator
 from app.config import settings
 
 # Configure logging
@@ -28,7 +28,7 @@ class AnalysisScheduler:
         self.nim_client = NVIDIANIMClient()
         self.oci_client = OCIStorageClient()
         self.analytics_service = AnalyticsService()
-        self.report_generator = ReportGenerator()  # TODO: Create this module
+        self.markdown_generator = MarkdownGenerator()  # Changed from report_generator
         self.is_running = False
         self.scheduler_thread: Optional[Thread] = None
         self.last_analysis_result: Optional[Dict[str, Any]] = None
@@ -36,6 +36,112 @@ class AnalysisScheduler:
         logger.info("📅 Analysis Scheduler initialized")
         logger.info(f"🔧 MCP Server Script: {settings.MCP_SERVER_SCRIPT_PATH}")
         logger.info(f"⏰ Analysis Interval: {settings.ANALYSIS_INTERVAL_HOURS} hour(s)")
+    
+
+
+    def _create_analysis_prompt(self, analysis_data: Dict[str, Any]) -> str:
+        """Create a comprehensive analysis prompt for NIM"""
+        
+        # Extract key statistics - FIX THE FIELD NAMES
+        stats = analysis_data.get("summary_statistics", {})
+        total_logs = stats.get("total_requests", 0)  # FIXED
+        unique_ips = stats.get("unique_ips", 0)      # This might not exist
+        
+        # Get the actual data from current_period
+        current_period = analysis_data.get("current_period", {})
+        country_analytics = current_period.get("country_analytics", {})
+        
+        # Extract top countries from the correct structure
+        country_distribution = country_analytics.get("country_distribution", {})
+        top_countries = list(country_distribution.keys())[:5] if country_distribution else []
+        
+        # Extract sensors from sensor analytics
+        sensor_analytics = current_period.get("sensor_analytics", {})
+        sensor_distribution = sensor_analytics.get("sensor_distribution", {})
+        sensors = list(sensor_distribution.keys()) if sensor_distribution else []
+
+        summary_data = {
+            "summary_statistics": stats,
+            "top_countries": top_countries,
+            "sensors": sensors,
+            "country_distribution": dict(list(country_distribution.items())[:10]),  # Top 10 only
+            "sensor_distribution": sensor_distribution,
+            "time_range": current_period.get("time_range", "24h")
+        }  
+        
+        prompt = f"""
+    Please analyze the following Oracle Cloud Infrastructure log data and provide a comprehensive security and performance assessment.
+
+    ## Data Summary:
+    - Total log entries: {total_logs:,}
+    - Unique countries: {stats.get('unique_countries', 0)}
+    - Unique sensors: {stats.get('unique_sensors', 0)}
+    - Top countries: {', '.join(top_countries) if top_countries else 'None'}
+    - Sensors used: {', '.join(sensors) if sensors else 'None'}
+
+    ## Raw Data for Analysis:
+    {summary_data}
+
+    ## Analysis Requirements:
+    ## Data Summary:
+    - Total log entries: {total_logs:,}
+    - Unique IP addresses: {unique_ips:,}
+    - Top countries: {', '.join(top_countries) if top_countries else 'None'}
+    - Sensor: {', '.join(sensors) if sensors else 'None'}
+
+    ## Analysis Requirements:
+    Please provide your analysis in the following JSON format:
+
+    {{
+        "executive_summary": "Brief overview of findings and overall assessment",
+        "risk_level": "Low|Medium|High|Critical",
+        "security_analysis": "Detailed security assessment including potential threats, anomalies, and concerns",
+        "key_findings": [
+            "Key finding 1",
+            "Key finding 2",
+            "Key finding 3"
+        ],
+        "recommendations": [
+            "Specific actionable recommendation 1",
+            "Specific actionable recommendation 2",
+            "Specific actionable recommendation 3"
+        ],
+        "next_steps": [
+            "Immediate action 1",
+            "Immediate action 2"
+        ],
+        "confidence": "High|Medium|Low",
+        "analysis_method": "Description of analysis approach used"
+    }}
+
+    ## Specific Areas to Analyze:
+    1. **Geographic Distribution**: Analyze traffic patterns by country. Look for unusual geographic concentrations or suspicious locations.
+
+    2. **Protocol Usage**: Examine protocol distribution for security implications. Look for unusual protocol usage patterns.
+
+    3. **Traffic Volume**: Assess if traffic volumes are within normal ranges or indicate potential issues.
+
+    4. **Security Indicators**: Identify any patterns that might indicate:
+    - DDoS attacks or unusual traffic spikes
+    - Suspicious geographic origins
+    - Unusual protocol combinations
+    - Potential security threats
+
+    5. **Performance Insights**: Comment on infrastructure performance and capacity utilization.
+
+    Please ensure your response is valid JSON and includes all required fields. Focus on actionable insights and specific recommendations based on the data patterns observed.
+    """
+        
+        return prompt.strip()
+
+
+    def _create_report_directory(self) -> str:
+        """Create timestamped report directory"""
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        report_dir = f"reports/sybylla-{timestamp}"
+        os.makedirs(report_dir, exist_ok=True)
+        logger.info(f"📁 Created report directory: {report_dir}")
+        return report_dir
     
     async def test_connections(self) -> Dict[str, Any]:
         """Test connections to all external services"""
@@ -100,6 +206,9 @@ class AnalysisScheduler:
         analysis_start_time = datetime.now()
         logger.info("🚀 Starting automated Oracle Logs analysis...")
         
+        # Create timestamped report directory
+        report_dir = self._create_report_directory()
+        
         try:
             # Step 1: Test connections
             logger.info("🔍 Step 1: Testing service connections...")
@@ -112,7 +221,8 @@ class AnalysisScheduler:
                     "success": False,
                     "error": error_msg,
                     "timestamp": analysis_start_time.isoformat(),
-                    "connections": connections
+                    "connections": connections,
+                    "report_dir": report_dir
                 }
             
             # Step 2: Get analysis prompt
@@ -132,50 +242,140 @@ class AnalysisScheduler:
             
             # Log data summary
             stats = analysis_data.get("summary_statistics", {})
-            logger.info(f"📈 Data gathered: {stats.get('total_logs', 0)} logs, "
-                       f"{len(analysis_data.get('country_analytics', {}).get('analytics', []))} countries, "
-                       f"{len(analysis_data.get('protocol_analytics', {}).get('analytics', []))} protocols")
             
-            # Step 4: Perform AI analysis using NVIDIA NIM
-            logger.info("🤖 Step 4: Performing AI analysis...")
+            logger.info(f"📈 Data gathered: {analysis_data.get('total_requests', 0)} logs, "
+                    f"{analysis_data.get('unique_countries', 0)} countries, "
+                    f"{analysis_data.get('unique_sensors', 0)} sensors")          
+            
+            # Step 4: Send data to NVIDIA NIM for AI analysis
+            logger.info("🤖 Step 4: Sending data to NVIDIA NIM for analysis...")
             try:
-                if settings.NVIDIA_NIM_API_KEY:
-                    nim_analysis = await self.nim_client.analyze_logs(analysis_data, analysis_prompt)
-                    logger.info("✅ AI analysis completed with NVIDIA NIM")
-                else:
-                    logger.info("ℹ️ No NVIDIA NIM API key, using fallback analysis")
-                    nim_analysis = self._generate_fallback_analysis(analysis_data)
+                # Validate analysis_data
+                if not isinstance(analysis_data, dict):
+                    logger.error(f"❌ Invalid analysis_data type: {type(analysis_data)}")
+                    raise ValueError(f"analysis_data must be a dictionary, got {type(analysis_data)}")
+                
+                logger.info(f"📊 Analysis data keys: {list(analysis_data.keys())}")
+                
+                # Create analysis prompt
+                analysis_prompt = self._create_analysis_prompt(analysis_data)
+                logger.info(f"📝 Generated analysis prompt ({len(analysis_prompt)} characters)")
+                
+                # Call NIM with both parameters
+                nim_analysis = await self.nim_client.analyze_logs(analysis_data, analysis_prompt)
+
+                # ADD THESE DEBUG LINES RIGHT AFTER:
+                logger.info(f"🔍 RAW NIM RESPONSE TYPE: {type(nim_analysis)}")
+                logger.info(f"🔍 RAW NIM RESPONSE LENGTH: {len(str(nim_analysis))}")
+                logger.info(f"🔍 RAW NIM RESPONSE REPR: {repr(nim_analysis)}")
+                logger.info(f"🔍 RAW NIM RESPONSE (first 500 chars): '{str(nim_analysis)[:500]}'")
+
+                # Validate NIM response
+                if isinstance(nim_analysis, str):
+                    logger.warning("⚠️ NIM returned string response, attempting to parse JSON")
+                    logger.info(f"🔍 FULL STRING RESPONSE: '{nim_analysis}'")  # This will show if it's empty
+
+                
+                # Validate NIM response
+                if isinstance(nim_analysis, str):
+                    logger.warning("⚠️ NIM returned string response, attempting to parse JSON")
+                    try:
+                        nim_analysis = json.loads(nim_analysis)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"❌ Failed to parse NIM JSON response: {e}")
+                        nim_analysis = {
+                            "executive_summary": nim_analysis[:500] + "..." if len(nim_analysis) > 500 else nim_analysis,
+                            "risk_level": "Medium",
+                            "recommendations": ["Manual review of analysis results required"],
+                            "error": "JSON parsing failed"
+                        }
+                
+                if not isinstance(nim_analysis, dict):
+                    logger.error(f"❌ Invalid NIM response type: {type(nim_analysis)}")
+                    nim_analysis = {
+                        "executive_summary": f"Received unexpected response type: {type(nim_analysis)}",
+                        "risk_level": "Unknown",
+                        "recommendations": ["Check NIM service configuration"],
+                        "error": f"Invalid response type: {type(nim_analysis)}"
+                    }
+                
+                logger.info(f"🤖 NIM analysis keys: {list(nim_analysis.keys())}")
+                logger.info("✅ AI analysis completed successfully")
+                
             except Exception as e:
-                logger.warning(f"⚠️ NIM analysis failed, using fallback: {e}")
-                nim_analysis = self._generate_fallback_analysis(analysis_data)
-            
-            # Step 5: Generate PDF report with visualizations
-            logger.info("📄 Step 5: Generating PDF report with charts...")
+                logger.error(f"❌ NIM analysis failed: {e}")
+                logger.error(f"❌ Exception type: {type(e).__name__}")
+                
+                # Create comprehensive fallback analysis
+                nim_analysis = {
+                    "executive_summary": f"AI analysis encountered an error: {str(e)}. Manual review of log data is recommended.",
+                    "risk_level": "Unknown",
+                    "security_analysis": "Automated security analysis was not completed due to service issues.",
+                    "key_findings": [
+                        "AI analysis service unavailable",
+                        "Manual review required",
+                        f"Error: {str(e)}"
+                    ],
+                    "recommendations": [
+                        "Perform manual log analysis",
+                        "Check NVIDIA NIM service availability",
+                        "Review system connectivity and authentication"
+                    ],
+                    "next_steps": [
+                        "Contact system administrator",
+                        "Review raw log data manually"
+                    ],
+                    "confidence": "Low",
+                    "analysis_method": "Fallback - Service Error",
+                    "error": str(e),
+                    "error_type": type(e).__name__
+                }
+
+
+            # Step 5: Generate Markdown report with visualizations
+            logger.info("📄 Step 5: Generating Markdown report with charts...")
             try:
-                # Call the actual PDF generator
-                report_path = await self.report_generator.generate_pdf_report(
-                    analysis_data, nim_analysis
+                logger.info(f"📁 Report directory: {report_dir}")
+                logger.info(f"📊 Final analysis_data type: {type(analysis_data)}")
+                logger.info(f"🤖 Final nim_analysis type: {type(nim_analysis)}")
+                
+                # Call the actual Markdown generator
+                report_files = await self.markdown_generator.generate_markdown_report(
+                    analysis_data, nim_analysis, report_dir
                 )
-                logger.info(f"✅ PDF Report generated: {report_path}")
+                
+                # report_files should contain paths to markdown file and any generated images
+                markdown_file = report_files.get("markdown_file")
+                image_files = report_files.get("image_files", [])
+                
+                logger.info(f"✅ Markdown Report generated: {markdown_file}")
+                if image_files:
+                    logger.info(f"📊 Generated {len(image_files)} chart images")
+                
+                report_path = markdown_file
                 
             except Exception as e:
-                logger.error(f"❌ PDF generation failed: {e}")
-                # Fallback to JSON report
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                report_path = f"/tmp/fallback_analysis_{timestamp}.json"
+                logger.error(f"❌ Markdown generation failed: {e}")
+                logger.error(f"❌ Exception type: {type(e).__name__}")
+                import traceback
+                logger.error(f"❌ Traceback: {traceback.format_exc()}")
                 
-                # Create reports directory if it doesn't exist
-                os.makedirs(os.path.dirname(report_path) if os.path.dirname(report_path) else '/tmp', exist_ok=True)
+                # Fallback to JSON report in the same directory
+                report_path = os.path.join(report_dir, "fallback_analysis.json")
                 
                 with open(report_path, 'w') as f:
                     json.dump({
                         'analysis_data': analysis_data,
                         'nim_analysis': nim_analysis,
                         'generated_at': datetime.now().isoformat(),
-                        'error': str(e)
+                        'error': str(e),
+                        'error_type': type(e).__name__,
+                        'analysis_data_type': str(type(analysis_data)),
+                        'nim_analysis_type': str(type(nim_analysis))
                     }, f, indent=2)
                 
                 logger.info(f"✅ Fallback JSON report generated: {report_path}")
+
 
             
             # Step 6: Upload to OCI Object Storage (optional)
@@ -183,11 +383,24 @@ class AnalysisScheduler:
             upload_success = False
             try:
                 if settings.OCI_NAMESPACE and settings.OCI_BUCKET_NAME:
+                    # Upload main report file
                     with open(report_path, 'rb') as f:
                         report_content = f.read()
                     
-                    report_filename = report_path.split('/')[-1]
+                    report_filename = os.path.basename(report_path)
                     upload_success = await self.oci_client.upload_report(report_filename, report_content)
+                    
+                    # Also upload any generated images if they exist
+                    if 'report_files' in locals() and report_files.get("image_files"):
+                        for image_file in report_files["image_files"]:
+                            try:
+                                with open(image_file, 'rb') as f:
+                                    image_content = f.read()
+                                image_filename = os.path.basename(image_file)
+                                await self.oci_client.upload_report(image_filename, image_content)
+                                logger.info(f"✅ Uploaded image: {image_filename}")
+                            except Exception as img_e:
+                                logger.warning(f"⚠️ Failed to upload image {image_file}: {img_e}")
                     
                     if upload_success:
                         logger.info("✅ Report uploaded to OCI successfully")
@@ -206,6 +419,7 @@ class AnalysisScheduler:
             result = {
                 "success": True,
                 "report_path": report_path,
+                "report_dir": report_dir,
                 "uploaded_to_oci": upload_success,
                 "timestamp": analysis_start_time.isoformat(),
                 "duration_seconds": analysis_duration.total_seconds(),
@@ -231,7 +445,8 @@ class AnalysisScheduler:
                 "success": False,
                 "error": str(e),
                 "timestamp": analysis_start_time.isoformat(),
-                "duration_seconds": analysis_duration.total_seconds()
+                "duration_seconds": analysis_duration.total_seconds(),
+                "report_dir": report_dir
             }
             
             self.last_analysis_result = result

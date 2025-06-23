@@ -37,5 +37,5 @@ aiofiles==23.2.1
 matplotlib>=3.7.0
 reportlab>=4.0.0
 Pillow>=10.0.0
-# Remove: seaborn (causing issues)
+
 

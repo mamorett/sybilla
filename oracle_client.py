@@ -233,22 +233,6 @@ class OracleLogsClient:
         
         return log_entries
 
-    async def get_traffic_analytics(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Get aggregated traffic statistics"""
-        start_time, end_time = self._parse_time_range(params.get('time_range', '24h'))
-        base_query = self._build_base_query()
-        if params.get('limit'):
-            base_query += f' | limit {params["limit"] * 10}'  # Get more for analytics
-        max_results = params.get('max_results')
-
-        oracle_logs = await self._execute_oracle_query(base_query, start_time, end_time, max_results=max_results)
-        
-        analytics = self._process_analytics(oracle_logs, params.get('group_by', 'country'))
-        analytics['time_range'] = params.get('time_range', '24h')
-        analytics['total_requests'] = len(oracle_logs)
-        analytics['log_source'] = self.log_id
-        
-        return analytics
 
     def _process_analytics(self, oracle_logs: List[Dict], group_by: str) -> Dict[str, Any]:
         """Process logs into analytics summary"""
@@ -317,3 +301,159 @@ class OracleLogsClient:
             start_time = now - timedelta(hours=24)
             
         return start_time, now
+
+    async def get_traffic_analytics(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Get aggregated traffic statistics"""
+        
+        # ADD DEBUG LOGGING
+        print(f"🔍 ORACLE CLIENT DEBUG:")
+        print(f"  Arguments received: {params}")
+        print(f"  Arguments type: {type(params)}")
+        print(f"  Time range: {params.get('time_range', 'NOT FOUND')}")
+        print(f"  Group by: {params.get('group_by', 'NOT FOUND')}")
+        print(f"  Limit: {params.get('limit', 'NOT FOUND')}")
+        
+        start_time, end_time = self._parse_time_range(params.get('time_range', '24h'))
+        base_query = self._build_base_query()
+        if params.get('limit'):
+            base_query += f' | limit {params["limit"] * 10}'  # Get more for analytics
+        max_results = params.get('max_results')
+
+        # ADD DEBUG LOGGING
+        print(f"🔍 ORACLE QUERY DEBUG:")
+        print(f"  Final query: {base_query}")
+        print(f"  Start time: {start_time}")
+        print(f"  End time: {end_time}")
+
+        oracle_logs = await self._execute_oracle_query(base_query, start_time, end_time, max_results=max_results)
+        
+        # ADD DEBUG LOGGING
+        print(f"🔍 ORACLE RESULTS DEBUG:")
+        print(f"  Raw logs returned: {len(oracle_logs)}")
+        if oracle_logs:
+            print(f"  First log structure: {list(oracle_logs[0].keys())}")
+            print(f"  First log sample: {oracle_logs[0]}")
+        
+        analytics = self._process_analytics(oracle_logs, params.get('group_by', 'country'))
+        analytics['time_range'] = params.get('time_range', '24h')
+        analytics['total_requests'] = len(oracle_logs)
+        analytics['log_source'] = self.log_id
+        analytics['query_used'] = base_query  # For debugging
+        
+        return analytics
+
+
+
+    def _process_analytics(self, oracle_logs: List[Dict], group_by: str) -> Dict[str, Any]:
+        """Enhanced analytics processing with better grouping"""
+        from collections import Counter
+        
+        unique_ips = set()
+        grouped_data = []
+        sensors = []
+        countries = []
+        cities = []
+        isps = []
+        
+        print(f"🔍 Processing {len(oracle_logs)} logs for group_by: {group_by}")
+        
+        for oracle_log in oracle_logs:
+            try:
+                # Handle different log structures
+                if 'logContent' in oracle_log:
+                    data = oracle_log.get('logContent', {}).get('data', {})
+                else:
+                    # Direct data structure
+                    data = oracle_log.get('data', oracle_log)
+                
+                ip = data.get('IP', '')
+                sensor = data.get('Sensor', '')
+                country = data.get('Country', '')
+                city = data.get('City', '')
+                isp = data.get('ISP', '')
+                
+                if ip:
+                    unique_ips.add(ip)
+                if sensor:
+                    sensors.append(sensor)
+                if country:
+                    countries.append(country)
+                if city:
+                    cities.append(city)
+                if isp:
+                    isps.append(isp)
+                
+                # Group by requested field
+                if group_by == 'country' and country:
+                    grouped_data.append(country)
+                elif group_by == 'city' and city:
+                    grouped_data.append(f"{city}, {country}" if country else city)
+                elif group_by == 'isp' and isp:
+                    grouped_data.append(isp)
+                elif group_by == 'sensor' and sensor:
+                    grouped_data.append(sensor)
+                    
+            except Exception as e:
+                print(f"Error processing log for analytics: {e}")
+                continue
+        
+        grouped_counter = Counter(grouped_data)
+        sensor_counter = Counter([s for s in sensors if s])
+        country_counter = Counter([c for c in countries if c])
+        city_counter = Counter([c for c in cities if c])
+        isp_counter = Counter([i for i in isps if i])
+        
+        print(f"🔍 Grouped data counts: {len(grouped_data)} items")
+        print(f"🔍 Top 3 {group_by}: {grouped_counter.most_common(3)}")
+        
+        return {
+            'unique_ips': len(unique_ips),
+            'unique_countries': len(set([c for c in countries if c])),
+            'unique_cities': len(set([c for c in cities if c])),
+            'unique_sensors': len(set([s for s in sensors if s])),
+            'unique_isps': len(set([i for i in isps if i])),
+            f'top_{group_by}': [
+                {'name': item, 'count': count} 
+                for item, count in grouped_counter.most_common(10)
+            ],
+            'sensor_distribution': dict(sensor_counter.most_common()),
+            'country_distribution': dict(country_counter.most_common()),
+            'city_distribution': dict(city_counter.most_common(10)),
+            'isp_distribution': dict(isp_counter.most_common(10)),
+            'raw_counts': {
+                'total_logs': len(oracle_logs),
+                'grouped_items': len(grouped_data),
+                'sensors': len(sensors),
+                'countries': len(countries),
+                'cities': len(cities),
+                'isps': len(isps)
+            }
+        }
+
+    # Add method for multiple countries
+    async def search_logs_by_countries(self, params: Dict[str, Any]) -> List[LogEntry]:
+        """Search logs by multiple countries"""
+        countries = params.get('countries', [])
+        if not countries:
+            return []
+        
+        start_time, end_time = self._parse_time_range(params.get('time_range', '24h'))
+        
+        # Build query for multiple countries
+        base_query = self._build_base_query()
+        country_conditions = [f"data.Country = '{country.strip()}'" for country in countries]
+        base_query += ' | where ' + ' or '.join(country_conditions)
+        
+        if params.get('limit'):
+            base_query += f" | limit {params['limit']}"
+        
+        max_results = params.get('max_results')
+        oracle_logs = await self._execute_oracle_query(base_query, start_time, end_time, max_results=max_results)
+        
+        log_entries = []
+        for oracle_log in oracle_logs:
+            entry = self._parse_oracle_log_entry(oracle_log)
+            if entry:
+                log_entries.append(entry)
+        
+        return log_entries

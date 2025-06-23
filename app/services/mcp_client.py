@@ -275,3 +275,101 @@ class MCPClient:
     async def close(self):
         """Dummy close"""
         pass
+
+    # Add these methods to your MCPClient class
+
+    async def get_traffic_analytics_by_group(self, group_by: str = "country", time_range: str = "24h", limit: int = 1000) -> dict:
+        """Get analytics grouped by different dimensions"""
+        try:
+            logger.info(f"🔍 Requesting analytics: group_by={group_by}, time_range={time_range}, limit={limit}")
+            
+            # Initialize
+            await self._call_server_simple({
+                "jsonrpc": "2.0",
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {"tools": {}},
+                    "clientInfo": {"name": "test", "version": "1.0.0"}
+                }
+            })
+            
+            # Call tool with specific grouping
+            tool_request = {
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {
+                    "name": "get_traffic_analytics",
+                    "arguments": {
+                        "time_range": time_range,
+                        "group_by": group_by,
+                        "limit": limit
+                    }
+                }
+            }
+            
+            response = await self._call_server_simple(tool_request)
+            
+            if "error" in response:
+                return {"error": response["error"]}
+            
+            # Extract data
+            result = response.get("result", {})
+            if "content" in result:
+                for item in result["content"]:
+                    if item.get("type") == "text":
+                        try:
+                            data = json.loads(item["text"])
+                            return data
+                        except Exception as parse_error:
+                            logger.warning(f"🔍 JSON parse failed: {parse_error}")
+                            return {"raw": item["text"]}
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Analytics failed: {e}")
+            return {"error": str(e)}
+
+    async def search_logs_by_countries(self, countries: List[str], time_range: str = "24h", limit: int = 100) -> dict:
+        """Search by multiple countries"""
+        try:
+            await self._call_server_simple({
+                "jsonrpc": "2.0",
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {"tools": {}},
+                    "clientInfo": {"name": "test", "version": "1.0.0"}
+                }
+            })
+            
+            response = await self._call_server_simple({
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {
+                    "name": "search_logs_by_countries",
+                    "arguments": {
+                        "countries": countries,
+                        "time_range": time_range,
+                        "limit": limit
+                    }
+                }
+            })
+            
+            if "error" in response:
+                return {"error": response["error"]}
+            
+            result = response.get("result", {})
+            if "content" in result:
+                for item in result["content"]:
+                    if item.get("type") == "text":
+                        try:
+                            return json.loads(item["text"])
+                        except:
+                            return {"raw": item["text"]}
+            
+            return result
+            
+        except Exception as e:
+            return {"error": str(e)}
