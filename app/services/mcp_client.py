@@ -229,9 +229,19 @@ class MCPClient:
         """Search by location"""
         return await self.search_logs_by_country(location, time_range, limit)
     
-    async def search_logs_by_ip(self, ip_address: str, time_range: str = "24h", limit: int = 100) -> dict:
-        """Search by IP"""
+    async def search_logs_by_ip(self, ip_address: str = None, ip_range: str = None, time_range: str = "24h", limit: int = 100) -> dict:
+        """Search by IP - supports both specific IP and IP ranges"""
         try:
+            # Determine which parameter to use
+            if ip_range:
+                search_param = {"ip_range": ip_range}
+                logger.info(f"🔍 Searching by IP range: {ip_range}")
+            elif ip_address:
+                search_param = {"ip_address": ip_address}
+                logger.info(f"🔍 Searching by IP address: {ip_address}")
+            else:
+                return {"error": "Either ip_address or ip_range parameter is required"}
+            
             await self._call_server_simple({
                 "jsonrpc": "2.0",
                 "method": "initialize",
@@ -242,35 +252,61 @@ class MCPClient:
                 }
             })
             
-            response = await self._call_server_simple({
+            tool_request = {
                 "jsonrpc": "2.0",
                 "method": "tools/call",
                 "params": {
                     "name": "search_logs_by_ip",
                     "arguments": {
-                        "ip_address": ip_address,
+                        **search_param,  # Either ip_address or ip_range
                         "time_range": time_range,
-                        "limit": limit
+                        "limit": limit,
+                        "max_results": limit
                     }
                 }
-            })
+            }
+            
+            logger.info(f"🔍 IP search tool request: {json.dumps(tool_request, indent=2)}")
+            
+            response = await self._call_server_simple(tool_request)
+            
+            logger.info(f"🔍 IP search raw response: {response}")
+            logger.info(f"🔍 IP search response type: {type(response)}")
+            logger.info(f"🔍 IP search response keys: {list(response.keys()) if isinstance(response, dict) else 'not dict'}")
             
             if "error" in response:
+                logger.error(f"❌ IP search error: {response['error']}")
                 return {"error": response["error"]}
             
             result = response.get("result", {})
+            logger.info(f"🔍 IP search result: {result}")
+            logger.info(f"🔍 IP search result type: {type(result)}")
+            
             if "content" in result:
-                for item in result["content"]:
+                logger.info(f"🔍 IP search content found: {len(result['content'])} items")
+                for i, item in enumerate(result["content"]):
+                    logger.info(f"🔍 IP search content[{i}]: type={item.get('type')}, keys={list(item.keys())}")
                     if item.get("type") == "text":
                         try:
-                            return json.loads(item["text"])
-                        except:
+                            data = json.loads(item["text"])
+                            logger.info(f"🔍 IP search parsed data type: {type(data)}")
+                            logger.info(f"🔍 IP search parsed data keys: {list(data.keys()) if isinstance(data, dict) else 'not dict'}")
+                            logger.info(f"🔍 IP search parsed data preview: {str(data)[:200]}...")
+                            return data
+                        except Exception as parse_error:
+                            logger.warning(f"🔍 JSON parse failed: {parse_error}")
+                            logger.warning(f"🔍 Raw text: {item['text'][:200]}...")
                             return {"raw": item["text"]}
             
+            logger.info(f"🔍 IP search returning raw result: {result}")
             return result
             
         except Exception as e:
+            logger.error(f"❌ IP search failed: {e}")
+            import traceback
+            logger.error(f"❌ IP search traceback: {traceback.format_exc()}")
             return {"error": str(e)}
+
     
     async def close(self):
         """Dummy close"""

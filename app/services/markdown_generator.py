@@ -149,27 +149,28 @@ class MarkdownGenerator:
         image_files = []
         
         try:
-            # 1. Country Traffic Chart
+            # Existing charts
             country_chart = await self._create_country_chart(analysis_data, report_dir)
             if country_chart:
                 image_files.append(country_chart)
             
-            # 2. Sensor Usage Chart (was protocol)
             sensor_chart = await self._create_protocol_chart(analysis_data, report_dir)
             if sensor_chart:
                 image_files.append(sensor_chart)
             
-            # 3. ISP Distribution Chart (NEW)
             isp_chart = await self._create_isp_chart(analysis_data, report_dir)
             if isp_chart:
                 image_files.append(isp_chart)
             
-            # 4. Timeline Chart (if available)
+            # NEW: IP Analytics Charts
+            ip_charts = await self._create_ip_charts(analysis_data, report_dir)
+            image_files.extend(ip_charts)
+            
+            # Existing charts
             timeline_chart = await self._create_timeline_chart(analysis_data, report_dir)
             if timeline_chart:
                 image_files.append(timeline_chart)
             
-            # 5. Summary Statistics Chart
             summary_chart = await self._create_summary_chart(analysis_data, report_dir)
             if summary_chart:
                 image_files.append(summary_chart)
@@ -178,6 +179,159 @@ class MarkdownGenerator:
             logger.warning(f"⚠️ Error generating some charts: {e}")
         
         return image_files
+
+
+
+    # Add this method to create IP charts
+    async def _create_ip_charts(self, analysis_data: Dict[str, Any], report_dir: str) -> List[str]:
+        """Create IP-related charts"""
+        image_files = []
+        
+        try:
+            current_period = analysis_data.get("current_period", {})
+            ip_analytics = current_period.get("ip_analytics", {})
+            
+            if not ip_analytics:
+                return image_files
+            
+            # 1. Top IPs Chart
+            top_ips_chart = await self._create_top_ips_chart(ip_analytics, report_dir)
+            if top_ips_chart:
+                image_files.append(top_ips_chart)
+            
+            # 2. IPs by Country Chart
+            ips_by_country_chart = await self._create_ips_by_country_chart(ip_analytics, report_dir)
+            if ips_by_country_chart:
+                image_files.append(ips_by_country_chart)
+            
+            # 3. IPs by Sensor Chart
+            ips_by_sensor_chart = await self._create_ips_by_sensor_chart(ip_analytics, report_dir)
+            if ips_by_sensor_chart:
+                image_files.append(ips_by_sensor_chart)
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Error generating IP charts: {e}")
+        
+        return image_files
+
+    async def _create_top_ips_chart(self, ip_analytics: Dict[str, Any], report_dir: str) -> Optional[str]:
+        """Create top IPs bar chart"""
+        try:
+            ip_distribution = ip_analytics.get("ip_distribution", {})
+            if not ip_distribution:
+                return None
+            
+            # Take top 15 IPs
+            top_ips = list(ip_distribution.items())[:15]
+            ips = [item[0] for item in top_ips]
+            requests = [item[1] for item in top_ips]
+            
+            plt.figure(figsize=(14, 8))
+            bars = plt.barh(ips, requests, color=sns.color_palette("viridis", len(ips)))
+            
+            plt.title('Top 15 IP Addresses by Request Volume', fontsize=16, fontweight='bold')
+            plt.xlabel('Total Requests', fontsize=12)
+            plt.ylabel('IP Address', fontsize=12)
+            
+            # Add value labels
+            for bar, value in zip(bars, requests):
+                plt.text(bar.get_width() + max(requests)*0.01, bar.get_y() + bar.get_height()/2,
+                        f'{value:,}', ha='left', va='center', fontweight='bold')
+            
+            plt.tight_layout()
+            
+            chart_path = os.path.join(report_dir, "top_ips_chart.png")
+            plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            logger.info(f"📊 Top IPs chart saved: {chart_path}")
+            return chart_path
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to create top IPs chart: {e}")
+            plt.close()
+            return None
+
+    async def _create_ips_by_country_chart(self, ip_analytics: Dict[str, Any], report_dir: str) -> Optional[str]:
+        """Create IPs by country distribution chart"""
+        try:
+            ip_by_country = ip_analytics.get("ip_by_country", {})
+            if not ip_by_country:
+                return None
+            
+            # Count unique IPs per country
+            country_ip_counts = {country: len(ips) for country, ips in ip_by_country.items()}
+            sorted_countries = sorted(country_ip_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+            
+            countries = [item[0] for item in sorted_countries]
+            ip_counts = [item[1] for item in sorted_countries]
+            
+            plt.figure(figsize=(12, 8))
+            bars = plt.bar(countries, ip_counts, color=sns.color_palette("plasma", len(countries)))
+            
+            plt.title('Unique IP Addresses by Country (Top 10)', fontsize=16, fontweight='bold')
+            plt.xlabel('Country', fontsize=12)
+            plt.ylabel('Unique IP Addresses', fontsize=12)
+            plt.xticks(rotation=45, ha='right')
+            
+            # Add value labels
+            for bar, value in zip(bars, ip_counts):
+                plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(ip_counts)*0.01,
+                        f'{value}', ha='center', va='bottom', fontweight='bold')
+            
+            plt.tight_layout()
+            
+            chart_path = os.path.join(report_dir, "ips_by_country_chart.png")
+            plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            logger.info(f"📊 IPs by country chart saved: {chart_path}")
+            return chart_path
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to create IPs by country chart: {e}")
+            plt.close()
+            return None
+
+    async def _create_ips_by_sensor_chart(self, ip_analytics: Dict[str, Any], report_dir: str) -> Optional[str]:
+        """Create IPs by sensor pie chart"""
+        try:
+            ip_by_sensor = ip_analytics.get("ip_by_sensor", {})
+            if not ip_by_sensor:
+                return None
+            
+            # Count unique IPs per sensor
+            sensor_ip_counts = {sensor: len(ips) for sensor, ips in ip_by_sensor.items()}
+            
+            sensors = list(sensor_ip_counts.keys())
+            ip_counts = list(sensor_ip_counts.values())
+            
+            plt.figure(figsize=(10, 8))
+            colors = sns.color_palette("Set3", len(sensors))
+            
+            wedges, texts, autotexts = plt.pie(ip_counts, labels=sensors, autopct='%1.1f%%', 
+                                            colors=colors, startangle=90)
+            
+            plt.title('Unique IP Distribution by Sensor', fontsize=16, fontweight='bold')
+            
+            # Enhance text appearance
+            for autotext in autotexts:
+                autotext.set_color('white')
+                autotext.set_fontweight('bold')
+            
+            plt.axis('equal')
+            
+            chart_path = os.path.join(report_dir, "ips_by_sensor_chart.png")
+            plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            logger.info(f"📊 IPs by sensor chart saved: {chart_path}")
+            return chart_path
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to create IPs by sensor chart: {e}")
+            plt.close()
+            return None
 
     
     async def _create_country_chart(self, analysis_data: Dict[str, Any], report_dir: str) -> Optional[str]:
@@ -514,6 +668,74 @@ class MarkdownGenerator:
                 elif "summary" in image_name.lower():
                     md_content.write("### Summary Statistics\n\n")
                     md_content.write(f"![Summary Statistics Chart]({image_name})\n\n")
+
+
+        # IP Address Analysis (NEW SECTION)
+        md_content.write("## IP Address Analysis\n\n")
+
+        current_period = analysis_data.get("current_period", {})
+        ip_analytics = current_period.get("ip_analytics", {})
+
+        if ip_analytics:
+            ip_distribution = ip_analytics.get("ip_distribution", {})
+            ip_by_country = ip_analytics.get("ip_by_country", {})
+            ip_by_sensor = ip_analytics.get("ip_by_sensor", {})
+            ip_by_city = ip_analytics.get("ip_by_city", {})
+            
+            # Top IPs
+            if ip_distribution:
+                md_content.write("### Top IP Addresses by Request Volume\n\n")
+                md_content.write("| Rank | IP Address | Requests | Percentage |\n")
+                md_content.write("|------|------------|----------|------------|\n")
+                
+                total_requests = sum(ip_distribution.values())
+                for i, (ip, requests) in enumerate(list(ip_distribution.items())[:15], 1):
+                    percentage = (requests / total_requests * 100) if total_requests > 0 else 0
+                    md_content.write(f"| {i} | {ip} | {requests:,} | {percentage:.1f}% |\n")
+                md_content.write("\n")
+            
+            # IPs by Country
+            if ip_by_country:
+                md_content.write("### IP Distribution by Country\n\n")
+                md_content.write("| Country | Unique IPs | Top IP (Requests) |\n")
+                md_content.write("|---------|------------|-------------------|\n")
+                
+                for country, ips in list(ip_by_country.items())[:10]:
+                    unique_count = len(ips)
+                    top_ip = list(ips.items())[0] if ips else ("N/A", 0)
+                    md_content.write(f"| {country} | {unique_count} | {top_ip[0]} ({top_ip[1]:,}) |\n")
+                md_content.write("\n")
+            
+            # IPs by Sensor
+            if ip_by_sensor:
+                md_content.write("### IP Distribution by Sensor\n\n")
+                md_content.write("| Sensor | Unique IPs | Top IP (Requests) |\n")
+                md_content.write("|--------|------------|-------------------|\n")
+                
+                for sensor, ips in ip_by_sensor.items():
+                    unique_count = len(ips)
+                    top_ip = list(ips.items())[0] if ips else ("N/A", 0)
+                    md_content.write(f"| {sensor} | {unique_count} | {top_ip[0]} ({top_ip[1]:,}) |\n")
+                md_content.write("\n")
+            
+            # IPs by City (if available)
+            if ip_by_city and len(ip_by_city) > 1:
+                md_content.write("### IP Distribution by City (Top 10)\n\n")
+                md_content.write("| City | Unique IPs | Top IP (Requests) |\n")
+                md_content.write("|------|------------|-------------------|\n")
+                
+                # Sort cities by unique IP count
+                sorted_cities = sorted(ip_by_city.items(), key=lambda x: len(x[1]), reverse=True)
+                
+                for city, ips in sorted_cities[:10]:
+                    unique_count = len(ips)
+                    top_ip = list(ips.items())[0] if ips else ("N/A", 0)
+                    md_content.write(f"| {city} | {unique_count} | {top_ip[0]} ({top_ip[1]:,}) |\n")
+                md_content.write("\n")
+
+        else:
+            md_content.write("No IP address data available in the current dataset.\n\n")
+
         
         # Geographic Analysis - FIX THE DATA SOURCE
         md_content.write("## Geographic Analysis\n\n")

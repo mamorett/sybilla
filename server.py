@@ -100,8 +100,8 @@ class MCPServer:
                                 "ip_address": {"type": "string", "description": "Specific IP address"},
                                 "ip_range": {"type": "string", "description": "IP range (e.g., '192.168.1.0/24')"},
                                 "time_range": {"type": "string", "default": "24h"},
-                                "limit": {"type": "integer", "default": 100},
-                                "max_results": {"type": "integer", "default": 100}
+                                "limit": {"type": "integer", "default": 1000},
+                                "max_results": {"type": "integer", "default": 1000}
                             }
                         }
                     }

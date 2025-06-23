@@ -73,20 +73,30 @@ class OracleLogsClient:
             query += f" | limit {params['limit']}"
             
         return query
-
+    
     def _build_ip_query(self, params: Dict[str, Any]) -> str:
         query = self._build_base_query()
         
         if params.get('ip_address'):
+            # Exact IP match
             query += f" | where data.IP = '{params['ip_address']}'"
         elif params.get('ip_range'):
-            ip_prefix = params["ip_range"].split('/')[0].rsplit('.', 1)[0]
-            query += f" | where data.IP like '{ip_prefix}%'"
+            ip_range = params['ip_range']
+            
+            # For IP ranges, especially 0.0.0.0/0, just get all logs
+            # We'll filter in Python if needed
+            if ip_range == "0.0.0.0/0":
+                print("🔍 Getting all logs for IP analysis")
+                # No additional filter - get all logs
+            else:
+                print(f"🔍 Getting all logs for IP range {ip_range} - will filter in Python")
+                # No additional filter - get all logs
         
         if params.get('limit'):
             query += f" | limit {params['limit']}"
             
         return query
+
 
     def _build_sensor_query(self, sensor: str, params: Dict[str, Any]) -> str:
         query = self._build_base_query()
