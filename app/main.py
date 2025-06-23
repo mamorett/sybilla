@@ -12,6 +12,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 import markdown
+import mimetypes
 
 from app.scheduler import AnalysisScheduler
 from app.config import settings
@@ -158,10 +159,33 @@ async def get_report(run_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading report: {str(e)}")
 
+def process_markdown_images(content: str, run_id: str) -> str:
+    """Process markdown content to fix image paths and add sizing"""
+    # Pattern to match markdown images: ![alt](path)
+    image_pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
+    
+    def replace_image_path(match):
+        alt_text = match.group(1)
+        image_path = match.group(2)
+        
+        # If it's already a web URL, leave it as is
+        if image_path.startswith(('http://', 'https://', '/')):
+            return match.group(0)
+        
+        # Convert relative path to web-accessible path
+        web_path = f"/reports/{run_id}/images/{os.path.basename(image_path)}"
+        return f'![{alt_text}]({web_path})'
+    
+    return re.sub(image_pattern, replace_image_path, content)
+
 @app.get("/report/{run_id}", response_class=HTMLResponse)
 async def view_report(request: Request, run_id: str):
     """View analysis report in HTML format"""
     try:
+        # Validate run_id format for security
+        if not re.match(r'^[a-zA-Z0-9_-]+$', run_id):
+            raise HTTPException(status_code=400, detail="Invalid run ID format")
+        
         # Get report content
         report_path = Path("./reports") / run_id / "analysis_report.md"
         
@@ -171,8 +195,11 @@ async def view_report(request: Request, run_id: str):
         with open(report_path, 'r', encoding='utf-8') as f:
             content = f.read()
         
+        # Process image paths in markdown
+        processed_content = process_markdown_images(content, run_id)
+        
         # Convert markdown to HTML
-        html_content = markdown.markdown(content, extensions=['tables', 'fenced_code', 'codehilite'])
+        html_content = markdown.markdown(processed_content, extensions=['tables', 'fenced_code', 'codehilite'])
         
         # Get run info
         runs = get_analysis_runs()
@@ -188,6 +215,77 @@ async def view_report(request: Request, run_id: str):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error loading report: {str(e)}")
+
+@app.get("/reports/{run_id}/images/{filename}")
+async def serve_report_image(run_id: str, filename: str):
+    """Serve images from report directories"""
+    # Validate run_id format for security
+    if not re.match(r'^[a-zA-Z0-9_-]+$', run_id):
+        raise HTTPException(status_code=400, detail="Invalid run ID format")
+    
+    # Validate filename for security (no path traversal)
+    if not re.match(r'^[a-zA-Z0-9_.-]+$', filename) or '..' in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    # Look for the image in the report directory
+    report_dir = Path("./reports") / run_id
+    
+    # Common image locations in report directories
+    possible_paths = [
+        report_dir / filename,
+        report_dir / "images" / filename,
+        report_dir / "plots" / filename,
+        report_dir / "charts" / filename,
+    ]
+    
+    image_path = None
+    for path in possible_paths:
+        if path.exists() and path.is_file():
+            image_path = path
+            break
+    
+    if not image_path:
+        raise HTTPException(status_code=404, detail="Image not found")
+    
+    # Determine media type
+    media_type, _ = mimetypes.guess_type(str(image_path))
+    if not media_type or not media_type.startswith('image/'):
+        media_type = 'application/octet-stream'
+    
+    return FileResponse(
+        image_path,
+        media_type=media_type,
+        filename=filename
+    )
+
+@app.get("/reports/{run_id}/files/{filename}")
+async def serve_report_file(run_id: str, filename: str):
+    """Serve any file from report directories"""
+    # Validate run_id format for security
+    if not re.match(r'^[a-zA-Z0-9_-]+$', run_id):
+        raise HTTPException(status_code=400, detail="Invalid run ID format")
+    
+    # Validate filename for security (no path traversal)
+    if not re.match(r'^[a-zA-Z0-9_.-]+$', filename) or '..' in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    # Look for the file in the report directory
+    report_dir = Path("./reports") / run_id
+    file_path = report_dir / filename
+    
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Determine media type
+    media_type, _ = mimetypes.guess_type(str(file_path))
+    if not media_type:
+        media_type = 'application/octet-stream'
+    
+    return FileResponse(
+        file_path,
+        media_type=media_type,
+        filename=filename
+    )
 
 @app.post("/api/scheduler/start")
 async def start_scheduler():
