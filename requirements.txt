@@ -1,42 +1,27 @@
-asyncio
-typing-extensions
-langgraph
-langchain-google-genai
-langchain
-streamlit
+# -- Web Framework & Server --
 fastapi
 uvicorn[standard]==0.24.0
-httpx==0.27
-pydantic==2.7.2
-pydantic-settings==2.5.2
 jinja2==3.1.2
 python-multipart==0.0.9
+aiofiles==23.2.1
+
+# -- Core Application Logic --
+pydantic==2.7.2
+pydantic-settings==2.5.2
+python-dotenv==1.0.0
 schedule==1.2.0
+httpx==0.27.0
+markdown==3.4.4
+typing-extensions
 
-# Oracle Cloud Infrastructure
+# -- Cloud & External Services --
 oci
+mcp==1.9.4
 
-# Data processing and visualization
+# -- Data Processing & Visualization --
 pandas==2.1.4
 numpy==1.24.3
 matplotlib==3.8.2
 seaborn==0.13.0
 plotly==5.17.0
-
-# PDF generation
-pdfkit==1.0.0
-weasyprint==60.2
-
-# MCP (Model Context Protocol)
-mcp==1.9.4
-
-# Additional utilities
-python-dotenv==1.0.0
-aiofiles==23.2.1
-# Remove any pdfkit or wkhtmltopdf references
-matplotlib>=3.7.0
-reportlab>=4.0.0
 Pillow>=10.0.0
-markdown==3.4.4
-
-
