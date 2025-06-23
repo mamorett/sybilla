@@ -331,6 +331,14 @@ class MarkdownGenerator:
             if stats.get("unique_countries"):
                 metrics.append("Countries")
                 values.append(stats["unique_countries"])
+
+            if stats.get("unique_cities"):
+                metrics.append("Cities")
+                values.append(stats["unique_cities"])      
+
+            if stats.get("unique_ips"):
+                metrics.append("IPs")
+                values.append(stats["unique_ips"])                            
             
             if stats.get("unique_sensors"):
                 metrics.append("Sensors")
@@ -339,11 +347,7 @@ class MarkdownGenerator:
             if stats.get("unique_isps"):
                 metrics.append("ISPs")
                 values.append(stats["unique_isps"])
-            
-            # Add data volume if available
-            if stats.get("total_bytes"):
-                metrics.append("Data (MB)")
-                values.append(stats["total_bytes"] / (1024 * 1024))
+        
             
             if not metrics:
                 return None
@@ -484,8 +488,8 @@ class MarkdownGenerator:
         md_content.write("|--------|-------|\n")
         md_content.write(f"| Total Log Entries | {stats.get('total_requests', 0):,} |\n")
         md_content.write(f"| Unique IP Addresses | {stats.get('unique_ips', 'N/A')} |\n")
-        md_content.write(f"| Total Data Volume | {stats.get('total_bytes', 0) / (1024*1024) if stats.get('total_bytes') else 0:.1f} MB |\n")
         md_content.write(f"| Countries Detected | {stats.get('unique_countries', 0)} |\n")
+        md_content.write(f"| Cities Detected | {stats.get('unique_cities', 0)} |\n")
         md_content.write(f"| Sensors Used | {stats.get('unique_sensors', 0)} |\n")
         md_content.write(f"| ISPs Detected | {stats.get('unique_isps', 0)} |\n")
         md_content.write("\n")

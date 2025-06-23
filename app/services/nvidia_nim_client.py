@@ -10,7 +10,7 @@ class NVIDIANIMClient:
         self.model = settings.NVIDIA_MODEL
         self.client = httpx.AsyncClient(
             headers={"Authorization": f"Bearer {self.api_key}"},
-            timeout=120.0
+            timeout=240.0
         )
     
     async def analyze_logs(self, logs_data: Dict[str, Any], analysis_prompt: str) -> str:

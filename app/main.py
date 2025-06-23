@@ -8,6 +8,10 @@ from fastapi.templating import Jinja2Templates
 from fastapi import Request
 import uvicorn
 import os
+import re
+from datetime import datetime
+from pathlib import Path
+import markdown
 
 from app.scheduler import AnalysisScheduler
 from app.config import settings
@@ -48,24 +52,63 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+def get_analysis_runs():
+    """Get all analysis runs from reports directory"""
+    reports_dir = Path("./reports")
+    runs = []
+    
+    if not reports_dir.exists():
+        return runs
+    
+    # Pattern to match directory names like sybylla-20250623_132354
+    pattern = re.compile(r'^(.+)-(\d{8}_\d{6})$')
+    
+    for item in reports_dir.iterdir():
+        if item.is_dir():
+            match = pattern.match(item.name)
+            if match:
+                hostname, timestamp_str = match.groups()
+                
+                # Parse timestamp
+                try:
+                    timestamp = datetime.strptime(timestamp_str, '%Y%m%d_%H%M%S')
+                except ValueError:
+                    continue
+                
+                # Check for analysis report
+                report_file = item / "analysis_report.md"
+                status = "completed" if report_file.exists() else "failed"
+                
+                # Get file size if exists
+                file_size = report_file.stat().st_size if report_file.exists() else 0
+                
+                runs.append({
+                    "id": item.name,
+                    "hostname": hostname,
+                    "timestamp": timestamp,
+                    "timestamp_str": timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                    "status": status,
+                    "report_exists": report_file.exists(),
+                    "file_size": file_size,
+                    "directory": str(item)
+                })
+    
+    # Sort by timestamp, newest first
+    runs.sort(key=lambda x: x['timestamp'], reverse=True)
+    return runs
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """Main dashboard"""
     status = await scheduler.get_scheduler_status() if scheduler else {"is_running": False}
     
-    # Get recent reports
-    reports_dir = settings.REPORT_OUTPUT_DIR
-    recent_reports = []
-    
-    if os.path.exists(reports_dir):
-        report_files = [f for f in os.listdir(reports_dir) if f.endswith('.pdf')]
-        report_files.sort(key=lambda x: os.path.getctime(os.path.join(reports_dir, x)), reverse=True)
-        recent_reports = report_files[:10]  # Last 10 reports
+    # Get analysis runs
+    analysis_runs = get_analysis_runs()
     
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "scheduler_status": status,
-        "recent_reports": recent_reports
+        "analysis_runs": analysis_runs
     })
 
 @app.post("/api/run-analysis")
@@ -85,43 +128,66 @@ async def get_status():
     
     return await scheduler.get_scheduler_status()
 
-@app.get("/api/reports")
-async def list_reports():
-    """List available reports"""
-    reports_dir = settings.REPORT_OUTPUT_DIR
-    reports = []
-    
-    if os.path.exists(reports_dir):
-        for filename in os.listdir(reports_dir):
-            if filename.endswith('.pdf'):
-                filepath = os.path.join(reports_dir, filename)
-                stat = os.stat(filepath)
-                reports.append({
-                    "filename": filename,
-                    "size": stat.st_size,
-                    "created": stat.st_ctime,
-                    "download_url": f"/api/reports/{filename}"
-                })
-    
-    reports.sort(key=lambda x: x['created'], reverse=True)
-    return {"reports": reports}
+@app.get("/api/runs")
+async def list_runs():
+    """List all analysis runs"""
+    runs = get_analysis_runs()
+    return {"runs": runs}
 
-@app.get("/api/reports/{filename}")
-async def download_report(filename: str):
-    """Download a specific report"""
-    if not filename.endswith('.pdf'):
-        raise HTTPException(status_code=400, detail="Invalid file type")
+@app.get("/api/runs/{run_id}/report")
+async def get_report(run_id: str):
+    """Get analysis report content"""
+    # Validate run_id format for security
+    if not re.match(r'^[a-zA-Z0-9_-]+$', run_id):
+        raise HTTPException(status_code=400, detail="Invalid run ID format")
     
-    filepath = os.path.join(settings.REPORT_OUTPUT_DIR, filename)
+    report_path = Path("./reports") / run_id / "analysis_report.md"
     
-    if not os.path.exists(filepath):
+    if not report_path.exists():
         raise HTTPException(status_code=404, detail="Report not found")
     
-    return FileResponse(
-        filepath,
-        media_type='application/pdf',
-        filename=filename
-    )
+    try:
+        with open(report_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        return {
+            "run_id": run_id,
+            "content": content,
+            "html_content": markdown.markdown(content, extensions=['tables', 'fenced_code'])
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading report: {str(e)}")
+
+@app.get("/report/{run_id}", response_class=HTMLResponse)
+async def view_report(request: Request, run_id: str):
+    """View analysis report in HTML format"""
+    try:
+        # Get report content
+        report_path = Path("./reports") / run_id / "analysis_report.md"
+        
+        if not report_path.exists():
+            raise HTTPException(status_code=404, detail="Report not found")
+        
+        with open(report_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Convert markdown to HTML
+        html_content = markdown.markdown(content, extensions=['tables', 'fenced_code', 'codehilite'])
+        
+        # Get run info
+        runs = get_analysis_runs()
+        run_info = next((run for run in runs if run['id'] == run_id), None)
+        
+        return templates.TemplateResponse("report.html", {
+            "request": request,
+            "run_id": run_id,
+            "run_info": run_info,
+            "html_content": html_content,
+            "markdown_content": content
+        })
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error loading report: {str(e)}")
 
 @app.post("/api/scheduler/start")
 async def start_scheduler():
@@ -147,7 +213,7 @@ async def health_check():
     return {
         "status": "healthy",
         "scheduler_running": scheduler.is_running if scheduler else False,
-        "timestamp": "2024-01-01T00:00:00Z"  # You'd use actual timestamp
+        "timestamp": datetime.now().isoformat()
     }
 
 if __name__ == "__main__":

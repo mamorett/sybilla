@@ -421,10 +421,10 @@ class AnalysisScheduler:
                 "duration_seconds": analysis_duration.total_seconds(),
                 "connections": connections,
                 "data_summary": {
-                    "total_logs": stats.get("total_logs", 0),
-                    "countries": len(analysis_data.get("country_analytics", {}).get("analytics", [])),
-                    "protocols": len(analysis_data.get("protocol_analytics", {}).get("analytics", [])),
-                    "time_range": analysis_data.get("time_range", "24h")
+                    "total_logs": stats.get("total_requests", 0),
+                    "countries": stats.get("unique_countries", 0),
+                    "protocols": stats.get("unique_sensors", 0),
+                    "time_range": analysis_data.get("current_period", {}).get("time_range", "24h")
                 },
                 "analysis_method": "NVIDIA NIM" if settings.NVIDIA_NIM_API_KEY else "Fallback Analysis"
             }
