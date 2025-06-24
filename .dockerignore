@@ -1,0 +1,32 @@
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# IDE / Editor
+.vscode/
+.idea/
+
+# Reports (should be generated inside the container, not copied in)
+reports/
+
+# Test/debug scripts
+check_server.py
+debug_mcp_communication.py
+oracle_test.py
+test_mc_connection.py
+
+# Other
+README.md
