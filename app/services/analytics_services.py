@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 class AnalyticsService:
     def __init__(self):
         # Get countries from environment variable
-        countries_env = os.getenv("ANALYTICS_COUNTRIES", "US,CN,RU,DE,GB,FR,JP,BR,IN,CA")
+        countries_env = os.getenv("ANALYTICS_COUNTRIES", "IR,UA,BH,CY,EG,IQ,JO,KW,LB,OM,PS,QA,SA,SY,TR,AE,YE")
         self.target_countries = [c.strip() for c in countries_env.split(",")]
     
     async def prepare_comprehensive_analysis(self, mcp_client) -> Dict[str, Any]:

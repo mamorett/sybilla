@@ -117,17 +117,13 @@ class AnalysisScheduler:
     ## Specific Areas to Analyze:
     1. **Geographic Distribution**: Analyze traffic patterns by country. Look for unusual geographic concentrations or suspicious locations.
 
-    2. **Protocol Usage**: Examine protocol distribution for security implications. Look for unusual protocol usage patterns.
+    2. **Sensor Hit**: Examine sensor distribution for security implications. Look as highest risk if ssh_24 sensor is used and source IP is not BUdapest, then ssh_22 if there are multiple connections, and cowrie if multiple connectiosn from same IP happens.
 
-    3. **Traffic Volume**: Assess if traffic volumes are within normal ranges or indicate potential issues.
-
-    4. **Security Indicators**: Identify any patterns that might indicate:
+    3. **Security Indicators**: Identify any patterns that might indicate:
     - DDoS attacks or unusual traffic spikes
     - Suspicious geographic origins
-    - Unusual protocol combinations
-    - Potential security threats
-
-    5. **Performance Insights**: Comment on infrastructure performance and capacity utilization.
+    - Multiple connections from the same IP to different sensors
+    - Suggest iptables command for INPOUT and FORWARD chains to block suspicious IPs
 
     Please ensure your response is valid JSON and includes all required fields. Focus on actionable insights and specific recommendations based on the data patterns observed.
     """
@@ -261,41 +257,23 @@ class AnalysisScheduler:
                 analysis_prompt = self._create_analysis_prompt(analysis_data)
                 logger.info(f"📝 Generated analysis prompt ({len(analysis_prompt)} characters)")
                 
-                # Call NIM with both parameters
+                # Call NIM - now returns comprehensive parsed response
                 nim_analysis = await self.nim_client.analyze_logs(analysis_data, analysis_prompt)
 
-                # ADD THESE DEBUG LINES RIGHT AFTER:
-                logger.info(f"🔍 RAW NIM RESPONSE TYPE: {type(nim_analysis)}")
-                logger.info(f"🔍 RAW NIM RESPONSE LENGTH: {len(str(nim_analysis))}")
-                logger.info(f"🔍 RAW NIM RESPONSE REPR: {repr(nim_analysis)}")
-                logger.info(f"🔍 RAW NIM RESPONSE (first 500 chars): '{str(nim_analysis)[:500]}'")
-
-                if isinstance(nim_analysis, str):
-                    logger.warning("⚠️ NIM returned string response, attempting to extract JSON")
-                    try:
-                        # Extract JSON from markdown code block
-                        import re
-                        json_match = re.search(r'```json\s*(\{.*?\})\s*```', nim_analysis, re.DOTALL)
-                        if json_match:
-                            json_str = json_match.group(1)
-                            logger.info(f"✅ Extracted JSON from markdown ({len(json_str)} chars)")
-                            nim_analysis = json.loads(json_str)
-                        else:
-                            logger.error("❌ No JSON code block found in response")
-                            raise ValueError("No JSON found in markdown response")
-                    except (json.JSONDecodeError, ValueError) as e:
-                        logger.error(f"❌ Failed to extract/parse JSON from markdown: {e}")
-                
-                if not isinstance(nim_analysis, dict):
-                    logger.error(f"❌ Invalid NIM response type: {type(nim_analysis)}")
-                    nim_analysis = {
-                        "executive_summary": f"Received unexpected response type: {type(nim_analysis)}",
-                        "risk_level": "Unknown",
-                        "recommendations": ["Check NIM service configuration"],
-                        "error": f"Invalid response type: {type(nim_analysis)}"
-                    }
-                
+                # Log the response structure
+                logger.info(f"🤖 NIM analysis type: {type(nim_analysis)}")
                 logger.info(f"🤖 NIM analysis keys: {list(nim_analysis.keys())}")
+                logger.info(f"🤖 Response type: {nim_analysis.get('response_type', 'unknown')}")
+                logger.info(f"🤖 Has JSON: {nim_analysis.get('has_json', False)}")
+                logger.info(f"🤖 Has additional content: {nim_analysis.get('has_additional_content', False)}")
+                
+                # Validate we have the required fields
+                required_fields = ['executive_summary', 'risk_level', 'recommendations']
+                missing_fields = [field for field in required_fields if not nim_analysis.get(field)]
+                
+                if missing_fields:
+                    logger.warning(f"⚠️ Missing required fields: {missing_fields}")
+                
                 logger.info("✅ AI analysis completed successfully")
                 
             except Exception as e:
