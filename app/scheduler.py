@@ -153,8 +153,11 @@ class AnalysisScheduler:
     - DDoS attacks or unusual traffic spikes
     - Report any IP which tries to connect to ssh_24 sensor from outside Budapest
     - Suspicious geographic origins
-    - Multiple connections from the same IP to different sensors, report these IPs
-    - Generate iptables command for INPUT and FORWARD chains to block suspicious IPs from previous point
+    - Multiple connections from the same IP to different sensors, report these IPs    
+
+    4. **Actions**: create commands for:
+    - Block IPs that show suspicious activity
+    - Generate iptables rules to block these IPs
 
     Please ensure your response is valid JSON and includes all required fields. Focus on actionable insights and specific recommendations based on the data patterns observed.
     """

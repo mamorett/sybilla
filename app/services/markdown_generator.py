@@ -3,6 +3,8 @@ import json
 import logging
 from datetime import datetime
 from typing import Dict, Any, List, Optional
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend for thread safety
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import seaborn as sns
