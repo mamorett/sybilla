@@ -147,13 +147,14 @@ class AnalysisScheduler:
     ## Specific Areas to Analyze:
     1. **Geographic Distribution**: Analyze traffic patterns by country. Look for unusual geographic concentrations or suspicious locations.
 
-    2. **Sensor Hit**: Examine sensor distribution for security implications. Look as highest risk if ssh_24 sensor is used and source IP is not BUdapest, then ssh_22 if there are multiple connections, and cowrie if multiple connectiosn from same IP happens.
+    2. **Sensor Hit**: Examine sensor distribution for security implications.
 
     3. **Security Indicators**: Identify any patterns that might indicate:
     - DDoS attacks or unusual traffic spikes
+    - Report any IP which tries to connect to ssh_24 sensor from outside Budapest
     - Suspicious geographic origins
-    - Multiple connections from the same IP to different sensors
-    - Suggest iptables command for INPOUT and FORWARD chains to block suspicious IPs
+    - Multiple connections from the same IP to different sensors, report these IPs
+    - Generate iptables command for INPUT and FORWARD chains to block suspicious IPs from previous point
 
     Please ensure your response is valid JSON and includes all required fields. Focus on actionable insights and specific recommendations based on the data patterns observed.
     """
