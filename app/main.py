@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -99,17 +99,36 @@ def get_analysis_runs():
     return runs
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request):
+async def dashboard(request: Request, page: int = Query(1, ge=1)):
     """Main dashboard"""
+    per_page = 24
     status = await scheduler.get_scheduler_status() if scheduler else {"is_running": False}
     
     # Get analysis runs
-    analysis_runs = get_analysis_runs()
-    
+    all_analysis_runs = get_analysis_runs()
+
+    # Paginate the runs
+    total_runs = len(all_analysis_runs)
+    start = (page - 1) * per_page
+    end = start + per_page
+    paginated_runs = all_analysis_runs[start:end]
+
+    total_pages = (total_runs + per_page - 1) // per_page
+
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "scheduler_status": status,
-        "analysis_runs": analysis_runs
+        "analysis_runs": paginated_runs,
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+            "total_runs": total_runs,
+            "has_prev": page > 1,
+            "has_next": page < total_pages,
+            "prev_num": page - 1 if page > 1 else None,
+            "next_num": page + 1 if page < total_pages else None,
+        }
     })
 
 @app.post("/api/run-analysis")
@@ -130,10 +149,29 @@ async def get_status():
     return await scheduler.get_scheduler_status()
 
 @app.get("/api/runs")
-async def list_runs():
+async def list_runs(page: int = Query(1, ge=1)):
     """List all analysis runs"""
-    runs = get_analysis_runs()
-    return {"runs": runs}
+    per_page = 24
+    all_runs = get_analysis_runs()
+    total_runs = len(all_runs)
+    start = (page - 1) * per_page
+    end = start + per_page
+    paginated_runs = all_runs[start:end]
+    total_pages = (total_runs + per_page - 1) // per_page
+
+    return {
+        "runs": paginated_runs,
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+            "total_runs": total_runs,
+            "has_prev": page > 1,
+            "has_next": page < total_pages,
+            "prev_num": page - 1 if page > 1 else None,
+            "next_num": page + 1 if page < total_pages else None,
+        }
+    }
 
 @app.get("/api/runs/{run_id}/report")
 async def get_report(run_id: str):

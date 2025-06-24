@@ -10,10 +10,6 @@ class NVIDIANIMClient:
         self.api_key = settings.NVIDIA_NIM_API_KEY
         self.base_url = settings.NVIDIA_NIM_BASE_URL
         self.model = settings.NVIDIA_MODEL
-        self.client = httpx.AsyncClient(
-            headers={"Authorization": f"Bearer {self.api_key}"},
-            timeout=240.0
-        )
     
     async def analyze_logs(self, logs_data: Dict[str, Any], analysis_prompt: str) -> Dict[str, Any]:
         """
@@ -31,25 +27,29 @@ class NVIDIANIMClient:
         print(f"🔍 NIM CLIENT: Using prompt from scheduler (no modification)")
         
         try:
-            response = await self.client.post(
-                f"{self.base_url}/chat/completions",
-                json={
-                    "model": self.model,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": "You are an expert cybersecurity analyst specializing in network traffic analysis and threat detection. Provide comprehensive, actionable analysis."
-                        },
-                        {
-                            "role": "user",
-                            "content": analysis_prompt  # Use ONLY the prompt from scheduler
-                        }
-                    ],
-                    "temperature": 0.1,
-                    "max_tokens": 6000
-                }
-            )
-            response.raise_for_status()
+            async with httpx.AsyncClient(
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                timeout=240.0
+            ) as client:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    json={
+                        "model": self.model,
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": "You are an expert cybersecurity analyst specializing in network traffic analysis and threat detection. Provide comprehensive, actionable analysis."
+                            },
+                            {
+                                "role": "user",
+                                "content": analysis_prompt  # Use ONLY the prompt from scheduler
+                            }
+                        ],
+                        "temperature": 0.1,
+                        "max_tokens": 6000
+                    }
+                )
+                response.raise_for_status()
             
             result = response.json()
             content = result["choices"][0]["message"]["content"]
@@ -202,4 +202,4 @@ class NVIDIANIMClient:
         return sections
 
     async def close(self):
-        await self.client.aclose()
+        pass

@@ -110,6 +110,13 @@
             color: var(--text-primary);
         }
 
+        .card-footer {
+            background-color: var(--bg-elevated);
+            padding: 1rem;
+            border-top: 1px solid var(--border);
+            border-radius: 0 0 12px 12px;
+        }
+
         .card-body {
             padding: 1.5rem;
             display: flex;
@@ -355,6 +362,60 @@
             display: inline-flex;
             align-items: center;
             gap: 0.25rem;
+        }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            padding-left: 0;
+            list-style: none;
+            margin: 0;
+        }
+
+        .page-link {
+            position: relative;
+            display: block;
+            padding: 0.5rem 0.75rem;
+            margin-left: -1px;
+            line-height: 1.25;
+            color: var(--accent-primary);
+            background-color: var(--bg-elevated);
+            border: 1px solid var(--border);
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+
+        .page-link:hover {
+            z-index: 2;
+            color: var(--nord6);
+            background-color: var(--accent-primary);
+            border-color: var(--accent-primary);
+        }
+
+        .page-item:first-child .page-link {
+            margin-left: 0;
+            border-top-left-radius: 8px;
+            border-bottom-left-radius: 8px;
+        }
+
+        .page-item:last-child .page-link {
+            border-top-right-radius: 8px;
+            border-bottom-right-radius: 8px;
+        }
+
+        .page-item.active .page-link {
+            z-index: 3;
+            color: var(--nord6);
+            background-color: var(--accent-primary);
+            border-color: var(--accent-primary);
+        }
+
+        .page-item.disabled .page-link {
+            color: var(--text-secondary);
+            pointer-events: none;
+            cursor: auto;
+            background-color: var(--bg-secondary);
+            border-color: var(--border);
         }
 
         /* Text utilities */
@@ -667,6 +728,26 @@
                         </div>
                         {% endif %}
                     </div>
+                    {% if pagination and pagination.total_pages > 1 %}
+                    <div class="card-footer d-flex justify-content-center">
+                        <nav aria-label="Page navigation">
+                            <ul class="pagination mb-0">
+                                <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                                    <a class="page-link" href="?page={{ pagination.prev_num }}">&laquo;</a>
+                                </li>
+                                {% for page_num in range(1, pagination.total_pages + 1) %}
+                                <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                                    <a class="page-link" href="?page={{ page_num }}">{{ page_num }}</a>
+                                </li>
+                                {% endfor %}
+                                <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                                    <a class="page-link" href="?page={{ pagination.next_num }}">&raquo;</a>
+                                </li>
+                            </ul>
+                        </nav>
+                    </div>
+                    {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
@@ -687,6 +768,11 @@
     </div>
 
     <script>
+        function getCurrentPage() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return parseInt(urlParams.get('page') || '1', 10);
+        }
+
         // Toast functionality
         function showToast(message, isError = false) {
             const toast = document.getElementById('notification-toast');
@@ -784,13 +870,15 @@
             const icon = button.querySelector('i');
             icon.classList.add('fa-spin');
             button.disabled = true;
-            
+            const currentPage = getCurrentPage();
+
             try {
-                const response = await fetch('/api/runs');
+                const response = await fetch(`/api/runs?page=${currentPage}`);
                 const data = await response.json();
                 
                 if (response.ok) {
                     updateRunsTable(data.runs);
+                    updatePagination(data.pagination);
                     showToast('Runs refreshed successfully!');
                 } else {
                     showToast('Failed to refresh runs', true);
@@ -801,6 +889,40 @@
                 icon.classList.remove('fa-spin');
                 button.disabled = false;
             }
+        }
+
+        function updatePagination(pagination) {
+            let paginationContainer = document.querySelector('.card-footer');
+
+            if (pagination.total_pages <= 1) {
+                if (paginationContainer) {
+                    paginationContainer.remove();
+                }
+                return;
+            }
+
+            if (!paginationContainer) {
+                const card = document.querySelector('.card-body.p-0').parentElement;
+                paginationContainer = document.createElement('div');
+                paginationContainer.className = 'card-footer d-flex justify-content-center';
+                card.appendChild(paginationContainer);
+            }
+
+            let nav = paginationContainer.querySelector('nav');
+            if (!nav) {
+                nav = document.createElement('nav');
+                nav.setAttribute('aria-label', 'Page navigation');
+                paginationContainer.appendChild(nav);
+            }
+
+            let paginationHtml = '<ul class="pagination mb-0">';
+            paginationHtml += `<li class="page-item ${!pagination.has_prev ? 'disabled' : ''}"><a class="page-link" href="?page=${pagination.prev_num}">&laquo;</a></li>`;
+            for (let i = 1; i <= pagination.total_pages; i++) {
+                paginationHtml += `<li class="page-item ${i === pagination.page ? 'active' : ''}"><a class="page-link" href="?page=${i}">${i}</a></li>`;
+            }
+            paginationHtml += `<li class="page-item ${!pagination.has_next ? 'disabled' : ''}"><a class="page-link" href="?page=${pagination.next_num}">&raquo;</a></li>`;
+            paginationHtml += '</ul>';
+            nav.innerHTML = paginationHtml;
         }
 
         function updateRunsTable(runs) {
@@ -850,10 +972,16 @@
         // Auto-refresh runs every 30 seconds
         setInterval(async () => {
             try {
-                const response = await fetch('/api/runs');
+                const currentPage = getCurrentPage();
+                const response = await fetch(`/api/runs?page=${currentPage}`);
                 const data = await response.json();
                 if (response.ok) {
+                    if (data.pagination.page > data.pagination.total_pages && data.pagination.total_pages > 0) {
+                        window.location.href = `/?page=${data.pagination.total_pages}`;
+                        return;
+                    }
                     updateRunsTable(data.runs);
+                    updatePagination(data.pagination);
                 }
             } catch (error) {
                 console.error('Error auto-refreshing runs:', error);
