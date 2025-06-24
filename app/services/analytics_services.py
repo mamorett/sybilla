@@ -342,13 +342,18 @@ class AnalyticsService:
                 "ip_by_country": {},
                 "ip_by_sensor": {},
                 "ip_by_city": {},
-                "total_unique_ips": 0
+                "total_unique_ips": 0,
+                "threat_indicators": {}
             }
         
         ip_counter = Counter()
         ip_by_country = defaultdict(lambda: {"unique_ips": set(), "requests": Counter()})
         ip_by_sensor = defaultdict(lambda: {"unique_ips": set(), "requests": Counter()})
         ip_by_city = defaultdict(lambda: {"unique_ips": set(), "requests": Counter()})
+        
+        # For threat indicators
+        suspicious_ssh_ips = set()
+        multi_sensor_ips = defaultdict(set)
         
         for log_entry in logs_data:
             try:
@@ -377,11 +382,25 @@ class AnalyticsService:
                 ip_by_city[city]["unique_ips"].add(ip_address)
                 ip_by_city[city]["requests"][ip_address] += 1
                     
+                # Specific threat detection
+                if ip_address != 'Unknown':
+                    # 1. IPs connecting to ssh_24 from outside Budapest
+                    if sensor == 'ssh_24' and city != 'Budapest':
+                        suspicious_ssh_ips.add(ip_address)
+
+                    # 2. IPs connecting to multiple sensors
+                    multi_sensor_ips[ip_address].add(sensor)
+                    
             except Exception as e:
                 print(f"❌ ERROR: Failed to process log entry for IP analysis: {e}")
                 continue
         
         print(f"🔍 DEBUG: IP counter results: {dict(ip_counter.most_common(5))}")
+        
+        # Filter for IPs that connected to more than one sensor
+        ips_with_multiple_sensors = {
+            ip: list(sensors) for ip, sensors in multi_sensor_ips.items() if len(sensors) > 1
+        }
         
         # Convert to final format - FIXED VERSION
         def format_grouped_data(grouped_data):
@@ -414,7 +433,11 @@ class AnalyticsService:
             "ip_by_country": format_grouped_data(ip_by_country),
             "ip_by_sensor": format_grouped_data(ip_by_sensor),
             "ip_by_city": format_grouped_data(ip_by_city),
-            "total_unique_ips": len(set(ip_counter.keys()))
+            "total_unique_ips": len(set(ip_counter.keys())),
+            "threat_indicators": {
+                "ssh_outside_budapest": list(suspicious_ssh_ips),
+                "multiple_sensors": ips_with_multiple_sensors
+            }
         }
         
         print(f"🔍 DEBUG: Final IP analysis result:")

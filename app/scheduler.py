@@ -40,7 +40,7 @@ class AnalysisScheduler:
 
 
     def _create_analysis_prompt(self, analysis_data: Dict[str, Any]) -> str:
-        """Create a comprehensive analysis prompt for NIM - THIS IS THE ONLY PROMPT"""
+        """Create a comprehensive analysis prompt for NIM - REENGINEERED FOR COMMAND GENERATION"""
         
         # Extract key statistics
         stats = analysis_data.get("summary_statistics", {})
@@ -63,106 +63,207 @@ class AnalysisScheduler:
         isp_analytics = current_period.get("isp_analytics", {})
         isp_distribution = isp_analytics.get("isp_distribution", {})
 
-        # Create comprehensive data summary for the prompt
-        summary_data = {
-            "summary_statistics": stats,
-            "top_countries": top_countries,
-            "sensors": sensors,
-            "country_distribution": dict(list(country_distribution.items())[:10]),
-            "sensor_distribution": sensor_distribution,
-            "isp_distribution": dict(list(isp_distribution.items())[:10]),
-            "time_range": current_period.get("time_range", "24h")
-        }
+        # Extract threat indicators from IP analytics
+        ip_analytics = current_period.get("ip_analytics", {})
+        threat_indicators = ip_analytics.get("threat_indicators", {})
+        ssh_violators = threat_indicators.get("ssh_outside_budapest", [])
+        multi_sensor_violators = threat_indicators.get("multiple_sensors", {})
+
+        # Collect ALL suspicious IPs for command generation
+        all_suspicious_ips = set()
+        
+        # Add SSH violators
+        if ssh_violators:
+            all_suspicious_ips.update(ssh_violators)
+        
+        # Add multi-sensor violators
+        if multi_sensor_violators:
+            all_suspicious_ips.update(multi_sensor_violators.keys())
+        
+        # Convert to sorted list for consistent output
+        suspicious_ip_list = sorted(list(all_suspicious_ips))
 
         # Format distributions for readable prompt
         country_list = "\n".join([f"  {country}: {count:,}" for country, count in list(country_distribution.items())[:10]])
         sensor_list = "\n".join([f"  {sensor}: {count:,}" for sensor, count in sensor_distribution.items()])
         isp_list = "\n".join([f"  {isp}: {count:,}" for isp, count in list(isp_distribution.items())[:10]])
+        ssh_violators_list = "\n".join([f"  - {ip}" for ip in ssh_violators]) if ssh_violators else "  - None detected."
+        multi_sensor_list = "\n".join([f"  - {ip}: {', '.join(sensors)}" for ip, sensors in list(multi_sensor_violators.items())[:10]]) if multi_sensor_violators else "  - None detected."
         
-        prompt = f"""
-    Please analyze the following Oracle Cloud Infrastructure log data and provide a comprehensive security and performance assessment.
+        # Create explicit IP list for commands
+        suspicious_ips_formatted = "\n".join([f"  - {ip}" for ip in suspicious_ip_list]) if suspicious_ip_list else "  - None detected."
+        
+        # PRE-GENERATE the exact commands we want
+        if suspicious_ip_list:
+            expected_commands = [f"iptables -A INPUT -s {ip} -j DROP" for ip in suspicious_ip_list]
+            expected_commands.extend([
+                "iptables -L INPUT -n | grep DROP",
+                "iptables-save > /etc/iptables/rules.v4",
+                "systemctl restart iptables"
+            ])
+            commands_example = '",\n        "'.join(expected_commands)
+        else:
+            expected_commands = [
+                "iptables -L INPUT -n"
+            ]
+            commands_example = '",\n        "'.join(expected_commands) 
+        
+        prompt = f"""You are a cybersecurity analyst. Analyze this log data and provide actionable security recommendations with specific commands.
+
+    ## CRITICAL: You MUST provide a JSON response with the exact structure shown below.
 
     ## Data Summary:
     - Total log entries: {total_logs:,}
+    - Unique IPs: {stats.get('unique_ips', 0)}
     - Unique countries: {stats.get('unique_countries', 0)}
-    - Unique sensors: {stats.get('unique_sensors', 0)}
-    - Unique ISPs: {stats.get('unique_isps', 0)}
     - Time range: {current_period.get('time_range', '24h')}
 
-    ## Top Countries by Traffic:
+    ## Traffic Distribution:
+    ### Top Countries:
     {country_list}
 
-    ## Sensor Distribution:
+    ### Sensors/Services:
     {sensor_list}
 
-    ## Top ISPs:
+    ### Top ISPs:
     {isp_list}
 
-    ## Analysis Requirements:
+    ## SECURITY THREATS DETECTED:
 
-    You may format your response in any clear, structured way. Please include both JSON data for structured processing AND additional explanatory text as needed.
+    ### Suspicious IPs connecting to SSH from outside Budapest:
+    {ssh_violators_list}
 
-    If you include JSON, please use this format within a ```json code block:
+    ### IPs scanning multiple sensors (potential reconnaissance):
+    {multi_sensor_list}
 
+    ### ALL SUSPICIOUS IPs REQUIRING IMMEDIATE BLOCKING:
+    {suspicious_ips_formatted}
+
+    ## REQUIRED JSON RESPONSE FORMAT:
+
+    You MUST respond with a JSON object containing these exact fields:
+
+    ```json
     {{
-        "executive_summary": "Brief overview of findings and overall assessment",
+        "executive_summary": "Brief 2-3 sentence summary of findings and risk level",
         "risk_level": "Low|Medium|High|Critical",
-        "security_analysis": "Detailed security assessment including potential threats, anomalies, and concerns",
+        "security_analysis": "Detailed analysis of threats and security concerns",
         "key_findings": [
-            "Key finding 1",
-            "Key finding 2",
-            "Key finding 3"
+            "List of 3-5 most important observations",
+            "Include specific IP addresses and threat types",
+            "Mention geographic anomalies"
         ],
         "recommendations": [
-            "Specific actionable recommendation 1",
-            "Specific actionable recommendation 2",
-            "Specific actionable recommendation 3"
+            "List of 3-5 specific actionable recommendations",
+            "Include immediate and long-term actions",
+            "Reference the suspicious IPs found"
         ],
-        "next_steps": [
-            "Immediate action 1",
-            "Immediate action 2"
+        "suggested_commands": [
+            "{commands_example}"
+        ],        
+        "immediate_actions": [
+            "List urgent actions to take within 24 hours",
+            "Include investigation steps for specific IPs"
         ],
         "confidence": "High|Medium|Low",
-        "analysis_method": "Description of analysis approach used",
-        "traffic_patterns": {{
-            "description": "Traffic pattern analysis"
-        }},
-        "anomalies": [
-            "Anomaly 1",
-            "Anomaly 2"
-        ],
-        "visualization_data": {{
-            "charts": [
-                {{
-                    "type": "Bar Chart",
-                    "title": "Top Countries by Traffic",
-                    "data": [
-                        {{"Country": "CountryName", "Requests": 123}}
-                    ]
-                }}
-            ]
-        }}
+        "analysis_method": "NVIDIA NIM Analysis of Oracle Cloud logs"
     }}
 
-    ## Specific Areas to Analyze:
-    1. **Geographic Distribution**: Analyze traffic patterns by country. Look for unusual geographic concentrations or suspicious locations.
+    ```
 
-    2. **Sensor Hit**: Examine sensor distribution for security implications.
+    **In the supplementary text outside the JSON block, you can provide:**
+    -   Further explanations of your findings.
+    -   Deeper insights into the traffic patterns.
+    -   Context for your recommendations.
 
-    3. **Security Indicators**: Identify any patterns that might indicate:
-    - DDoS attacks or unusual traffic spikes
-    - Report any IP which tries to connect to ssh_24 sensor from outside Budapest
-    - Suspicious geographic origins
-    - Multiple connections from the same IP to different sensors, report these IPs    
-
-    4. **Actions**: create commands for:
-    - Block IPs that show suspicious activity
-    - Generate iptables rules to block these IPs
-
-    Please ensure your response is valid JSON and includes all required fields. Focus on actionable insights and specific recommendations based on the data patterns observed.
-    """
+    COMMAND GENERATION RULES:
+    - MANDATORY: Generate iptables -A INPUT -s <IP> -j DROP for EVERY IP in the suspicious list above
+    - If no suspicious IPs: Provide monitoring commands instead
+    - Always include: At least 3-5 actionable commands
+    - Format: Each command must be a complete, executable bash command string
+    SPECIFIC REQUIREMENTS:
+    - Risk Assessment: Evaluate based on SSH access from unexpected locations and multi-sensor scanning
+    - Geographic Analysis: Flag connections from outside expected regions (Budapest area expected for SSH)
+    - Command Priority: Block suspicious IPs first, then add monitoring commands
+    - Actionable Focus: Every recommendation must have a corresponding command or investigation step
+    EXAMPLE COMMANDS TO INCLUDE:
+    - iptables -A INPUT -s 198.55.98.176 -j DROP (for each suspicious IP)
+    - iptables -L INPUT -n | grep DROP (to verify blocks)
+    - tail -f /var/log/auth.log | grep "Failed password" (for SSH monitoring)
+    - netstat -an | grep :22 | grep ESTABLISHED (check active SSH connections)
+    Generate your analysis focusing on the {len(suspicious_ip_list)} suspicious IPs detected and provide immediate blocking commands for each one."""  
         
         return prompt.strip()
+
+
+    def _generate_security_commands(self, analysis_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate security commands and analysis - returns data for the REPORT"""
+        
+        # Extract suspicious IPs
+        current_period = analysis_data.get("current_period", {})
+        ip_analytics = current_period.get("ip_analytics", {})
+        threat_indicators = ip_analytics.get("threat_indicators", {})
+        
+        ssh_violators = threat_indicators.get("ssh_outside_budapest", [])
+        multi_sensor_violators = threat_indicators.get("multiple_sensors", {})
+        
+        # Collect suspicious IPs
+        suspicious_ips = set(ssh_violators)
+        suspicious_ips.update(multi_sensor_violators.keys())
+        suspicious_ips = sorted(list(suspicious_ips))
+        
+        commands = []
+        
+        if suspicious_ips:
+            # Block each suspicious IP
+            for ip in suspicious_ips:
+                commands.append(f"iptables -A INPUT -s {ip} -j DROP")
+            
+            # Add verification
+            commands.append("iptables -L INPUT -n | grep DROP")
+            commands.append("iptables-save > /etc/iptables/rules.v4")
+            
+            executive_summary = f"SECURITY ALERT: {len(suspicious_ips)} malicious IPs detected: {', '.join(suspicious_ips)}. Immediate blocking required."
+            risk_level = "High"
+            key_findings = [
+                f"SSH attacks from outside Budapest: {', '.join(ssh_violators)}" if ssh_violators else "No SSH attacks detected",
+                f"Port scanning from: {', '.join(multi_sensor_violators.keys())}" if multi_sensor_violators else "No port scanning detected",
+                f"Total malicious IPs to block: {len(suspicious_ips)}"
+            ]
+            recommendations = [
+                f"Execute the {len(commands)} iptables commands below immediately",
+                "Monitor /var/log/auth.log for continued attacks",
+                "Consider implementing fail2ban for automated blocking"
+            ]
+        else:
+            # No threats - monitoring commands
+            commands = [
+                "iptables -L INPUT -n"
+            ]
+            
+            executive_summary = "No immediate security threats detected. System appears secure."
+            risk_level = "Low"
+            key_findings = [
+                "No suspicious SSH attempts from outside Budapest",
+                "No port scanning activity detected",
+                "All traffic appears legitimate"
+            ]
+            recommendations = [
+                "Continue monitoring with the commands provided below",
+                "Review logs periodically for new threats",
+                "Maintain current security posture"
+            ]
+        
+        return {
+            "executive_summary": executive_summary,
+            "risk_level": risk_level,
+            "security_analysis": f"Automated analysis of Oracle Cloud logs identified {len(suspicious_ips)} suspicious IP addresses requiring immediate action.",
+            "key_findings": key_findings,
+            "recommendations": recommendations,
+            "suggested_commands": commands,
+            "confidence": "High",
+            "analysis_method": "Automated Threat Detection"
+        }
 
 
     def _create_report_directory(self) -> str:
@@ -290,7 +391,6 @@ class AnalysisScheduler:
                 # Create THE ONLY analysis prompt (from scheduler)
                 analysis_prompt = self._create_analysis_prompt(analysis_data)
                 logger.info(f"📝 Generated analysis prompt ({len(analysis_prompt)} characters)")
-                logger.info("📝 Using ONLY scheduler prompt - no additional prompts in NIM client")
                 
                 # Call NIM with the complete prompt
                 nim_analysis = await self.nim_client.analyze_logs(analysis_data, analysis_prompt)
@@ -312,6 +412,22 @@ class AnalysisScheduler:
                     logger.info("✅ All required fields present in response")
                 
                 logger.info("✅ AI analysis completed successfully")
+
+                # Always generate our own analysis with commands
+                automated_analysis = self._generate_security_commands(analysis_data)
+
+                # Use AI analysis if available, otherwise use automated
+                if nim_analysis and isinstance(nim_analysis, dict):
+                    logger.info("✅ Security analysis ready for report generation")                
+                    # Merge AI analysis with our guaranteed commands
+                    nim_analysis["suggested_commands"] = automated_analysis["suggested_commands"]
+                    # Ensure we have all required fields
+                    for key in ["executive_summary", "risk_level", "key_findings", "recommendations"]:
+                        if key not in nim_analysis:
+                            nim_analysis[key] = automated_analysis[key]
+                else:
+                    # Use our automated analysis
+                    nim_analysis = automated_analysis
                 
             except Exception as e:
                 logger.error(f"❌ NIM analysis failed: {e}")

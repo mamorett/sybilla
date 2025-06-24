@@ -1,16 +1,16 @@
-import asyncio
 import json
 import re
-from typing import Dict, Any, List, Optional, Tuple
-import httpx
+from typing import Any, Dict
+from openai import AsyncOpenAI
 from app.config import settings
 
 class NVIDIANIMClient:
     def __init__(self):
-        self.api_key = settings.NVIDIA_NIM_API_KEY
-        self.base_url = settings.NVIDIA_NIM_BASE_URL
+        self.client = AsyncOpenAI(
+            base_url=settings.NVIDIA_NIM_BASE_URL,
+            api_key=settings.NVIDIA_NIM_API_KEY,
+        )
         self.model = settings.NVIDIA_MODEL
-    
     async def analyze_logs(self, logs_data: Dict[str, Any], analysis_prompt: str) -> Dict[str, Any]:
         """
         Analyze logs using NVIDIA NIM with the provided prompt.
@@ -27,32 +27,24 @@ class NVIDIANIMClient:
         print(f"🔍 NIM CLIENT: Using prompt from scheduler (no modification)")
         
         try:
-            async with httpx.AsyncClient(
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                timeout=240.0
-            ) as client:
-                response = await client.post(
-                    f"{self.base_url}/chat/completions",
-                    json={
-                        "model": self.model,
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": "You are an expert cybersecurity analyst specializing in network traffic analysis and threat detection. Provide comprehensive, actionable analysis."
-                            },
-                            {
-                                "role": "user",
-                                "content": analysis_prompt  # Use ONLY the prompt from scheduler
-                            }
-                        ],
-                        "temperature": 0.1,
-                        "max_tokens": 6000
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert cybersecurity analyst specializing in network traffic analysis and threat detection. Provide comprehensive, actionable analysis."
+                    },
+                    {
+                        "role": "user",
+                        "content": analysis_prompt  # Use ONLY the prompt from scheduler
                     }
-                )
-                response.raise_for_status()
+                ],
+                temperature=0.1,
+                max_tokens=6000,
+                timeout=240.0
+            )
             
-            result = response.json()
-            content = result["choices"][0]["message"]["content"]
+            content = response.choices[0].message.content
             
             print(f"🔍 NIM RESPONSE LENGTH: {len(content) if content else 0}")
             print(f"🔍 NIM RESPONSE (first 300 chars): '{content[:300] if content else 'None'}'")
@@ -85,6 +77,7 @@ class NVIDIANIMClient:
             "key_findings": json_data.get("key_findings", []),
             "recommendations": json_data.get("recommendations", []),
             "next_steps": json_data.get("next_steps", []),
+            "suggested_commands": json_data.get("suggested_commands", []),
             "confidence": json_data.get("confidence", "Medium"),
             "analysis_method": json_data.get("analysis_method", "NVIDIA NIM Analysis"),
             

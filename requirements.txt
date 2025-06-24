@@ -10,9 +10,9 @@ pydantic==2.7.2
 pydantic-settings==2.5.2
 python-dotenv==1.0.0
 schedule==1.2.0
-httpx==0.27.0
 markdown==3.4.4
 typing-extensions
+openai
 
 # -- Cloud & External Services --
 oci
