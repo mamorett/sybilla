@@ -40,12 +40,11 @@ class AnalysisScheduler:
 
 
     def _create_analysis_prompt(self, analysis_data: Dict[str, Any]) -> str:
-        """Create a comprehensive analysis prompt for NIM"""
+        """Create a comprehensive analysis prompt for NIM - THIS IS THE ONLY PROMPT"""
         
-        # Extract key statistics - FIX THE FIELD NAMES
+        # Extract key statistics
         stats = analysis_data.get("summary_statistics", {})
-        total_logs = stats.get("total_requests", 0)  # FIXED
-        unique_ips = stats.get("unique_ips", 0)      # This might not exist
+        total_logs = stats.get("total_requests", 0)
         
         # Get the actual data from current_period
         current_period = analysis_data.get("current_period", {})
@@ -60,14 +59,25 @@ class AnalysisScheduler:
         sensor_distribution = sensor_analytics.get("sensor_distribution", {})
         sensors = list(sensor_distribution.keys()) if sensor_distribution else []
 
+        # Extract ISP data
+        isp_analytics = current_period.get("isp_analytics", {})
+        isp_distribution = isp_analytics.get("isp_distribution", {})
+
+        # Create comprehensive data summary for the prompt
         summary_data = {
             "summary_statistics": stats,
             "top_countries": top_countries,
             "sensors": sensors,
-            "country_distribution": dict(list(country_distribution.items())[:10]),  # Top 10 only
+            "country_distribution": dict(list(country_distribution.items())[:10]),
             "sensor_distribution": sensor_distribution,
+            "isp_distribution": dict(list(isp_distribution.items())[:10]),
             "time_range": current_period.get("time_range", "24h")
-        }  
+        }
+
+        # Format distributions for readable prompt
+        country_list = "\n".join([f"  {country}: {count:,}" for country, count in list(country_distribution.items())[:10]])
+        sensor_list = "\n".join([f"  {sensor}: {count:,}" for sensor, count in sensor_distribution.items()])
+        isp_list = "\n".join([f"  {isp}: {count:,}" for isp, count in list(isp_distribution.items())[:10]])
         
         prompt = f"""
     Please analyze the following Oracle Cloud Infrastructure log data and provide a comprehensive security and performance assessment.
@@ -76,21 +86,23 @@ class AnalysisScheduler:
     - Total log entries: {total_logs:,}
     - Unique countries: {stats.get('unique_countries', 0)}
     - Unique sensors: {stats.get('unique_sensors', 0)}
-    - Top countries: {', '.join(top_countries) if top_countries else 'None'}
-    - Sensors used: {', '.join(sensors) if sensors else 'None'}
+    - Unique ISPs: {stats.get('unique_isps', 0)}
+    - Time range: {current_period.get('time_range', '24h')}
 
-    ## Raw Data for Analysis:
-    {summary_data}
+    ## Top Countries by Traffic:
+    {country_list}
+
+    ## Sensor Distribution:
+    {sensor_list}
+
+    ## Top ISPs:
+    {isp_list}
 
     ## Analysis Requirements:
-    ## Data Summary:
-    - Total log entries: {total_logs:,}
-    - Unique IP addresses: {unique_ips:,}
-    - Top countries: {', '.join(top_countries) if top_countries else 'None'}
-    - Sensor: {', '.join(sensors) if sensors else 'None'}
 
-    ## Analysis Requirements:
-    Please provide your analysis in the following JSON format:
+    You may format your response in any clear, structured way. Please include both JSON data for structured processing AND additional explanatory text as needed.
+
+    If you include JSON, please use this format within a ```json code block:
 
     {{
         "executive_summary": "Brief overview of findings and overall assessment",
@@ -111,7 +123,25 @@ class AnalysisScheduler:
             "Immediate action 2"
         ],
         "confidence": "High|Medium|Low",
-        "analysis_method": "Description of analysis approach used"
+        "analysis_method": "Description of analysis approach used",
+        "traffic_patterns": {{
+            "description": "Traffic pattern analysis"
+        }},
+        "anomalies": [
+            "Anomaly 1",
+            "Anomaly 2"
+        ],
+        "visualization_data": {{
+            "charts": [
+                {{
+                    "type": "Bar Chart",
+                    "title": "Top Countries by Traffic",
+                    "data": [
+                        {{"Country": "CountryName", "Requests": 123}}
+                    ]
+                }}
+            ]
+        }}
     }}
 
     ## Specific Areas to Analyze:
@@ -253,11 +283,12 @@ class AnalysisScheduler:
                 
                 logger.info(f"📊 Analysis data keys: {list(analysis_data.keys())}")
                 
-                # Create analysis prompt
+                # Create THE ONLY analysis prompt (from scheduler)
                 analysis_prompt = self._create_analysis_prompt(analysis_data)
                 logger.info(f"📝 Generated analysis prompt ({len(analysis_prompt)} characters)")
+                logger.info("📝 Using ONLY scheduler prompt - no additional prompts in NIM client")
                 
-                # Call NIM - now returns comprehensive parsed response
+                # Call NIM with the complete prompt
                 nim_analysis = await self.nim_client.analyze_logs(analysis_data, analysis_prompt)
 
                 # Log the response structure
@@ -273,6 +304,8 @@ class AnalysisScheduler:
                 
                 if missing_fields:
                     logger.warning(f"⚠️ Missing required fields: {missing_fields}")
+                else:
+                    logger.info("✅ All required fields present in response")
                 
                 logger.info("✅ AI analysis completed successfully")
                 

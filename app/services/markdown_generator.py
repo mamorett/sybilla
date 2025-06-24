@@ -15,15 +15,99 @@ logger = logging.getLogger(__name__)
 
 class MarkdownGenerator:
     def __init__(self):
-        """Initialize the Markdown report generator"""
-        # Set matplotlib style for better-looking charts
-        plt.style.use('seaborn-v0_8' if 'seaborn-v0_8' in plt.style.available else 'default')
-        sns.set_palette("husl")
+        """Initialize the Markdown report generator with Nord theme"""
+        
+        # Nord Color Palette
+        self.NORD_COLORS = {
+            # Polar Night
+            'nord0': '#2E3440',
+            'nord1': '#3B4252', 
+            'nord2': '#434C5E',
+            'nord3': '#4C566A',
+            # Snow Storm
+            'nord4': '#D8DEE9',
+            'nord5': '#E5E9F0', 
+            'nord6': '#ECEFF4',
+            # Frost
+            'nord7': '#8FBCBB',
+            'nord8': '#88C0D0',
+            'nord9': '#81A1C1',
+            'nord10': '#5E81AC',
+            # Aurora
+            'nord11': '#BF616A',  # Red
+            'nord12': '#D08770',  # Orange
+            'nord13': '#EBCB8B',  # Yellow
+            'nord14': '#A3BE8C',  # Green
+            'nord15': '#B48EAD'   # Purple
+        }
+        
+        # Nord color sequences for multi-series charts
+        self.NORD_SEQUENCE = [
+            self.NORD_COLORS['nord10'],  # Blue
+            self.NORD_COLORS['nord14'],  # Green
+            self.NORD_COLORS['nord11'],  # Red
+            self.NORD_COLORS['nord13'],  # Yellow
+            self.NORD_COLORS['nord12'],  # Orange
+            self.NORD_COLORS['nord15'],  # Purple
+            self.NORD_COLORS['nord8'],   # Light Blue
+            self.NORD_COLORS['nord7'],   # Teal
+        ]
+        
+        # Configure matplotlib with Nord theme
+        self._setup_nord_theme()
         
         # Configure matplotlib for headless operation
         plt.ioff()  # Turn off interactive mode
         
-        logger.info("📝 Markdown Generator initialized")
+        logger.info("📝 Markdown Generator initialized with Nord theme")
+    
+    def _setup_nord_theme(self):
+        """Setup matplotlib with Nord theme"""
+        # Set the color palette
+        sns.set_palette(self.NORD_SEQUENCE)
+        
+        # Configure matplotlib rcParams for Nord theme
+        plt.rcParams.update({
+            # Figure settings
+            'figure.facecolor': self.NORD_COLORS['nord6'],
+            'axes.facecolor': 'white',
+            
+            # Text and fonts
+            'text.color': self.NORD_COLORS['nord0'],
+            'axes.labelcolor': self.NORD_COLORS['nord1'],
+            'axes.titlecolor': self.NORD_COLORS['nord0'],
+            'xtick.color': self.NORD_COLORS['nord2'],
+            'ytick.color': self.NORD_COLORS['nord2'],
+            'font.family': 'sans-serif',
+            'font.sans-serif': ['Inter', 'DejaVu Sans', 'Arial', 'sans-serif'],
+            'font.size': 10,
+            'axes.titlesize': 14,
+            'axes.labelsize': 11,
+            'xtick.labelsize': 9,
+            'ytick.labelsize': 9,
+            'legend.fontsize': 10,
+            
+            # Grid and spines
+            'axes.grid': True,
+            'grid.color': self.NORD_COLORS['nord4'],
+            'grid.alpha': 0.6,
+            'grid.linewidth': 0.8,
+            'axes.spines.left': True,
+            'axes.spines.bottom': True,
+            'axes.spines.top': False,
+            'axes.spines.right': False,
+            'axes.edgecolor': self.NORD_COLORS['nord3'],
+            'axes.linewidth': 1,
+            
+            # Legend
+            'legend.frameon': True,
+            'legend.facecolor': 'white',
+            'legend.edgecolor': self.NORD_COLORS['nord4'],
+            'legend.framealpha': 0.95,
+            
+            # Other
+            'axes.axisbelow': True,
+        })
     
     async def generate_markdown_report(
         self, 
@@ -143,6 +227,32 @@ class MarkdownGenerator:
         else:
             return {"raw_data": str(data)}
 
+    def _generate_minimal_markdown(self, analysis_data: Dict[str, Any], nim_analysis: Dict[str, Any]) -> str:
+        """Generate minimal markdown content as fallback"""
+        md_content = StringIO()
+        
+        md_content.write(f"# Oracle Cloud Infrastructure Log Analysis Report\n\n")
+        md_content.write(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n")
+        md_content.write("## Status\n\n")
+        md_content.write("⚠️ **Note:** This is a minimal report due to data processing issues.\n\n")
+        
+        # Basic stats if available
+        stats = analysis_data.get("summary_statistics", {})
+        if stats:
+            md_content.write("## Available Statistics\n\n")
+            for key, value in stats.items():
+                md_content.write(f"- **{key.replace('_', ' ').title()}:** {value}\n")
+            md_content.write("\n")
+        
+        # NIM analysis if available
+        if nim_analysis.get("executive_summary"):
+            md_content.write("## Analysis Summary\n\n")
+            md_content.write(f"{nim_analysis['executive_summary']}\n\n")
+        
+        md_content.write("---\n\n")
+        md_content.write("*Minimal report generated due to data processing issues.*\n")
+        
+        return md_content.getvalue()
     
     async def _generate_charts(self, analysis_data: Dict[str, Any], report_dir: str) -> List[str]:
         """Generate all charts and return list of image file paths"""
@@ -162,11 +272,11 @@ class MarkdownGenerator:
             if isp_chart:
                 image_files.append(isp_chart)
             
-            # NEW: IP Analytics Charts
+            # IP Analytics Charts
             ip_charts = await self._create_ip_charts(analysis_data, report_dir)
             image_files.extend(ip_charts)
             
-            # Existing charts
+            # Timeline and summary charts
             timeline_chart = await self._create_timeline_chart(analysis_data, report_dir)
             if timeline_chart:
                 image_files.append(timeline_chart)
@@ -180,9 +290,6 @@ class MarkdownGenerator:
         
         return image_files
 
-
-
-    # Add this method to create IP charts
     async def _create_ip_charts(self, analysis_data: Dict[str, Any], report_dir: str) -> List[str]:
         """Create IP-related charts"""
         image_files = []
@@ -192,6 +299,7 @@ class MarkdownGenerator:
             ip_analytics = current_period.get("ip_analytics", {})
             
             if not ip_analytics:
+                logger.info("ℹ️ No IP analytics data available for charts")
                 return image_files
             
             # 1. Top IPs Chart
@@ -215,7 +323,7 @@ class MarkdownGenerator:
         return image_files
 
     async def _create_top_ips_chart(self, ip_analytics: Dict[str, Any], report_dir: str) -> Optional[str]:
-        """Create top IPs bar chart"""
+        """Create top IPs bar chart with Nord theme"""
         try:
             ip_distribution = ip_analytics.get("ip_distribution", {})
             if not ip_distribution:
@@ -226,22 +334,30 @@ class MarkdownGenerator:
             ips = [item[0] for item in top_ips]
             requests = [item[1] for item in top_ips]
             
-            plt.figure(figsize=(14, 8))
-            bars = plt.barh(ips, requests, color=sns.color_palette("viridis", len(ips)))
+            fig, ax = plt.subplots(figsize=(14, 8))
+            fig.patch.set_facecolor(self.NORD_COLORS['nord6'])
             
-            plt.title('Top 15 IP Addresses by Request Volume', fontsize=16, fontweight='bold')
-            plt.xlabel('Total Requests', fontsize=12)
-            plt.ylabel('IP Address', fontsize=12)
+            # Create gradient colors from Nord palette
+            colors = [self.NORD_COLORS['nord10'] if i % 2 == 0 else self.NORD_COLORS['nord8'] 
+                    for i in range(len(ips))]
             
-            # Add value labels
+            bars = ax.barh(ips, requests, color=colors, edgecolor=self.NORD_COLORS['nord1'], linewidth=0.5)
+            
+            ax.set_title('Top 15 IP Addresses by Request Volume', 
+                        fontsize=16, fontweight='bold', color=self.NORD_COLORS['nord0'], pad=20)
+            ax.set_xlabel('Total Requests', fontsize=12, color=self.NORD_COLORS['nord1'])
+            ax.set_ylabel('IP Address', fontsize=12, color=self.NORD_COLORS['nord1'])
+            
+            # Add value labels with Nord colors
             for bar, value in zip(bars, requests):
-                plt.text(bar.get_width() + max(requests)*0.01, bar.get_y() + bar.get_height()/2,
-                        f'{value:,}', ha='left', va='center', fontweight='bold')
+                ax.text(bar.get_width() + max(requests)*0.01, bar.get_y() + bar.get_height()/2,
+                    f'{value:,}', ha='left', va='center', fontweight='bold', 
+                    color=self.NORD_COLORS['nord0'])
             
             plt.tight_layout()
             
             chart_path = os.path.join(report_dir, "top_ips_chart.png")
-            plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+            plt.savefig(chart_path, dpi=300, bbox_inches='tight', facecolor=self.NORD_COLORS['nord6'])
             plt.close()
             
             logger.info(f"📊 Top IPs chart saved: {chart_path}")
@@ -253,36 +369,56 @@ class MarkdownGenerator:
             return None
 
     async def _create_ips_by_country_chart(self, ip_analytics: Dict[str, Any], report_dir: str) -> Optional[str]:
-        """Create IPs by country distribution chart"""
+        """Create IPs by country distribution chart with Nord theme"""
         try:
             ip_by_country = ip_analytics.get("ip_by_country", {})
             if not ip_by_country:
                 return None
             
-            # Count unique IPs per country
-            country_ip_counts = {country: len(ips) for country, ips in ip_by_country.items()}
+            # Handle both old and new data formats
+            country_ip_counts = {}
+            
+            for country, data in ip_by_country.items():
+                if isinstance(data, dict):
+                    # New format: {"unique_ips": count, "top_ip": "x.x.x.x"}
+                    country_ip_counts[country] = data.get("unique_ips", 0)
+                elif isinstance(data, list):
+                    # Old format: list of IPs
+                    country_ip_counts[country] = len(data)
+                else:
+                    # Fallback
+                    country_ip_counts[country] = 1
+            
             sorted_countries = sorted(country_ip_counts.items(), key=lambda x: x[1], reverse=True)[:10]
             
             countries = [item[0] for item in sorted_countries]
             ip_counts = [item[1] for item in sorted_countries]
             
-            plt.figure(figsize=(12, 8))
-            bars = plt.bar(countries, ip_counts, color=sns.color_palette("plasma", len(countries)))
+            fig, ax = plt.subplots(figsize=(12, 8))
+            fig.patch.set_facecolor(self.NORD_COLORS['nord6'])
             
-            plt.title('Unique IP Addresses by Country (Top 10)', fontsize=16, fontweight='bold')
-            plt.xlabel('Country', fontsize=12)
-            plt.ylabel('Unique IP Addresses', fontsize=12)
+            colors = [self.NORD_SEQUENCE[i % len(self.NORD_SEQUENCE)] for i in range(len(countries))]
+            
+            bars = ax.bar(countries, ip_counts, color=colors, 
+                        edgecolor=self.NORD_COLORS['nord1'], linewidth=0.8)
+            
+            ax.set_title('Unique IP Addresses by Country (Top 10)', 
+                        fontsize=16, fontweight='bold', color=self.NORD_COLORS['nord0'], pad=20)
+            ax.set_xlabel('Country', fontsize=12, color=self.NORD_COLORS['nord1'])
+            ax.set_ylabel('Unique IP Addresses', fontsize=12, color=self.NORD_COLORS['nord1'])
+            
             plt.xticks(rotation=45, ha='right')
             
             # Add value labels
             for bar, value in zip(bars, ip_counts):
-                plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(ip_counts)*0.01,
-                        f'{value}', ha='center', va='bottom', fontweight='bold')
+                ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(ip_counts)*0.01,
+                    f'{value}', ha='center', va='bottom', fontweight='bold',
+                    color=self.NORD_COLORS['nord0'])
             
             plt.tight_layout()
             
             chart_path = os.path.join(report_dir, "ips_by_country_chart.png")
-            plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+            plt.savefig(chart_path, dpi=300, bbox_inches='tight', facecolor=self.NORD_COLORS['nord6'])
             plt.close()
             
             logger.info(f"📊 IPs by country chart saved: {chart_path}")
@@ -294,35 +430,55 @@ class MarkdownGenerator:
             return None
 
     async def _create_ips_by_sensor_chart(self, ip_analytics: Dict[str, Any], report_dir: str) -> Optional[str]:
-        """Create IPs by sensor pie chart"""
+        """Create IPs by sensor pie chart with Nord theme"""
         try:
             ip_by_sensor = ip_analytics.get("ip_by_sensor", {})
             if not ip_by_sensor:
                 return None
             
-            # Count unique IPs per sensor
-            sensor_ip_counts = {sensor: len(ips) for sensor, ips in ip_by_sensor.items()}
+            # Handle both old and new data formats
+            sensor_ip_counts = {}
+            
+            for sensor, data in ip_by_sensor.items():
+                if isinstance(data, dict):
+                    # New format: {"unique_ips": count, "top_ip": "x.x.x.x"}
+                    sensor_ip_counts[sensor] = data.get("unique_ips", 0)
+                elif isinstance(data, list):
+                    # Old format: list of IPs
+                    sensor_ip_counts[sensor] = len(data)
+                else:
+                    # Fallback
+                    sensor_ip_counts[sensor] = 1
             
             sensors = list(sensor_ip_counts.keys())
             ip_counts = list(sensor_ip_counts.values())
             
-            plt.figure(figsize=(10, 8))
-            colors = sns.color_palette("Set3", len(sensors))
+            fig, ax = plt.subplots(figsize=(10, 8))
+            fig.patch.set_facecolor(self.NORD_COLORS['nord6'])
             
-            wedges, texts, autotexts = plt.pie(ip_counts, labels=sensors, autopct='%1.1f%%', 
-                                            colors=colors, startangle=90)
+            colors = [self.NORD_SEQUENCE[i % len(self.NORD_SEQUENCE)] for i in range(len(sensors))]
             
-            plt.title('Unique IP Distribution by Sensor', fontsize=16, fontweight='bold')
+            wedges, texts, autotexts = ax.pie(ip_counts, labels=sensors, autopct='%1.1f%%', 
+                                            colors=colors, startangle=90,
+                                            wedgeprops=dict(edgecolor=self.NORD_COLORS['nord6'], linewidth=2))
+            
+            ax.set_title('Unique IP Distribution by Sensor', 
+                        fontsize=16, fontweight='bold', color=self.NORD_COLORS['nord0'], pad=20)
             
             # Enhance text appearance
+            for text in texts:
+                text.set_color(self.NORD_COLORS['nord1'])
+                text.set_fontweight('bold')
+            
             for autotext in autotexts:
                 autotext.set_color('white')
                 autotext.set_fontweight('bold')
+                autotext.set_fontsize(10)
             
             plt.axis('equal')
             
             chart_path = os.path.join(report_dir, "ips_by_sensor_chart.png")
-            plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+            plt.savefig(chart_path, dpi=300, bbox_inches='tight', facecolor=self.NORD_COLORS['nord6'])
             plt.close()
             
             logger.info(f"📊 IPs by sensor chart saved: {chart_path}")
@@ -333,11 +489,9 @@ class MarkdownGenerator:
             plt.close()
             return None
 
-    
     async def _create_country_chart(self, analysis_data: Dict[str, Any], report_dir: str) -> Optional[str]:
-        """Create country traffic distribution chart"""
+        """Create country traffic distribution chart with Nord theme"""
         try:
-            # FIX: Get data from correct structure
             current_period = analysis_data.get("current_period", {})
             country_analytics = current_period.get("country_analytics", {})
             country_distribution = country_analytics.get("country_distribution", {})
@@ -351,23 +505,32 @@ class MarkdownGenerator:
             countries = [item[0] for item in sorted_countries]
             requests = [item[1] for item in sorted_countries]
             
-            plt.figure(figsize=(12, 8))
-            bars = plt.bar(countries, requests, color=sns.color_palette("husl", len(countries)))
+            fig, ax = plt.subplots(figsize=(12, 8))
+            fig.patch.set_facecolor(self.NORD_COLORS['nord6'])
             
-            plt.title('Top 10 Countries by Request Volume', fontsize=16, fontweight='bold')
-            plt.xlabel('Country', fontsize=12)
-            plt.ylabel('Total Requests', fontsize=12)
+            # Use Nord color sequence
+            colors = [self.NORD_SEQUENCE[i % len(self.NORD_SEQUENCE)] for i in range(len(countries))]
+            
+            bars = ax.bar(countries, requests, color=colors, 
+                        edgecolor=self.NORD_COLORS['nord1'], linewidth=0.8)
+            
+            ax.set_title('Top 10 Countries by Request Volume', 
+                        fontsize=16, fontweight='bold', color=self.NORD_COLORS['nord0'], pad=20)
+            ax.set_xlabel('Country', fontsize=12, color=self.NORD_COLORS['nord1'])
+            ax.set_ylabel('Total Requests', fontsize=12, color=self.NORD_COLORS['nord1'])
+            
             plt.xticks(rotation=45, ha='right')
             
             # Add value labels on bars
             for bar, value in zip(bars, requests):
-                plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(requests)*0.01,
-                        f'{value:,}', ha='center', va='bottom', fontweight='bold')
+                ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(requests)*0.01,
+                    f'{value:,}', ha='center', va='bottom', fontweight='bold',
+                    color=self.NORD_COLORS['nord0'])
             
             plt.tight_layout()
             
             chart_path = os.path.join(report_dir, "country_traffic_chart.png")
-            plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+            plt.savefig(chart_path, dpi=300, bbox_inches='tight', facecolor=self.NORD_COLORS['nord6'])
             plt.close()
             
             logger.info(f"📊 Country chart saved: {chart_path}")
@@ -377,11 +540,10 @@ class MarkdownGenerator:
             logger.warning(f"⚠️ Failed to create country chart: {e}")
             plt.close()
             return None
-    
+
     async def _create_protocol_chart(self, analysis_data: Dict[str, Any], report_dir: str) -> Optional[str]:
-        """Create sensor usage pie chart"""
+        """Create sensor usage pie chart with Nord theme"""
         try:
-            # FIX: Get sensor data from correct structure
             current_period = analysis_data.get("current_period", {})
             sensor_analytics = current_period.get("sensor_analytics", {})
             sensor_distribution = sensor_analytics.get("sensor_distribution", {})
@@ -392,23 +554,33 @@ class MarkdownGenerator:
             sensors = list(sensor_distribution.keys())
             requests = list(sensor_distribution.values())
             
-            plt.figure(figsize=(10, 8))
-            colors = sns.color_palette("husl", len(sensors))
+            fig, ax = plt.subplots(figsize=(10, 8))
+            fig.patch.set_facecolor(self.NORD_COLORS['nord6'])
             
-            wedges, texts, autotexts = plt.pie(requests, labels=sensors, autopct='%1.1f%%', 
-                                            colors=colors, startangle=90)
+            # Use Nord colors for pie chart
+            colors = [self.NORD_SEQUENCE[i % len(self.NORD_SEQUENCE)] for i in range(len(sensors))]
             
-            plt.title('Traffic Distribution by Sensor', fontsize=16, fontweight='bold')
+            wedges, texts, autotexts = ax.pie(requests, labels=sensors, autopct='%1.1f%%', 
+                                            colors=colors, startangle=90,
+                                            wedgeprops=dict(edgecolor=self.NORD_COLORS['nord6'], linewidth=2))
             
-            # Enhance text appearance
+            ax.set_title('Traffic Distribution by Sensor', 
+                        fontsize=16, fontweight='bold', color=self.NORD_COLORS['nord0'], pad=20)
+            
+            # Enhance text appearance with Nord colors
+            for text in texts:
+                text.set_color(self.NORD_COLORS['nord1'])
+                text.set_fontweight('bold')
+            
             for autotext in autotexts:
                 autotext.set_color('white')
                 autotext.set_fontweight('bold')
+                autotext.set_fontsize(10)
             
             plt.axis('equal')
             
             chart_path = os.path.join(report_dir, "sensor_usage_chart.png")
-            plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+            plt.savefig(chart_path, dpi=300, bbox_inches='tight', facecolor=self.NORD_COLORS['nord6'])
             plt.close()
             
             logger.info(f"📊 Sensor chart saved: {chart_path}")
@@ -419,17 +591,14 @@ class MarkdownGenerator:
             plt.close()
             return None
 
-    
     async def _create_timeline_chart(self, analysis_data: Dict[str, Any], report_dir: str) -> Optional[str]:
-        """Create traffic timeline chart if time-series data is available"""
+        """Create traffic timeline chart with Nord theme"""
         try:
-            # Check if we have time-series data
             time_series = analysis_data.get("time_series", [])
             if not time_series:
                 logger.info("ℹ️ No time-series data available for timeline chart")
                 return None
             
-            # Convert to pandas DataFrame for easier handling
             df = pd.DataFrame(time_series)
             if 'timestamp' not in df.columns or 'requests' not in df.columns:
                 return None
@@ -437,23 +606,33 @@ class MarkdownGenerator:
             df['timestamp'] = pd.to_datetime(df['timestamp'])
             df = df.sort_values('timestamp')
             
-            plt.figure(figsize=(14, 6))
-            plt.plot(df['timestamp'], df['requests'], linewidth=2, color='#2E86AB', marker='o', markersize=4)
+            fig, ax = plt.subplots(figsize=(14, 6))
+            fig.patch.set_facecolor(self.NORD_COLORS['nord6'])
             
-            plt.title('Traffic Timeline (Last 24 Hours)', fontsize=16, fontweight='bold')
-            plt.xlabel('Time', fontsize=12)
-            plt.ylabel('Requests per Hour', fontsize=12)
+            # Plot line with Nord colors
+            ax.plot(df['timestamp'], df['requests'], 
+                linewidth=3, color=self.NORD_COLORS['nord10'], 
+                marker='o', markersize=6, markerfacecolor=self.NORD_COLORS['nord10'],
+                markeredgecolor='white', markeredgewidth=1.5)
+            
+            # Fill area under curve
+            ax.fill_between(df['timestamp'], df['requests'], alpha=0.3, 
+                        color=self.NORD_COLORS['nord8'])
+            
+            ax.set_title('Traffic Timeline (Last 24 Hours)', 
+                        fontsize=16, fontweight='bold', color=self.NORD_COLORS['nord0'], pad=20)
+            ax.set_xlabel('Time', fontsize=12, color=self.NORD_COLORS['nord1'])
+            ax.set_ylabel('Requests per Hour', fontsize=12, color=self.NORD_COLORS['nord1'])
             
             # Format x-axis
-            plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-            plt.gca().xaxis.set_major_locator(mdates.HourLocator(interval=2))
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+            ax.xaxis.set_major_locator(mdates.HourLocator(interval=2))
             plt.xticks(rotation=45)
             
-            plt.grid(True, alpha=0.3)
             plt.tight_layout()
             
             chart_path = os.path.join(report_dir, "traffic_timeline_chart.png")
-            plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+            plt.savefig(chart_path, dpi=300, bbox_inches='tight', facecolor=self.NORD_COLORS['nord6'])
             plt.close()
             
             logger.info(f"📊 Timeline chart saved: {chart_path}")
@@ -463,54 +642,49 @@ class MarkdownGenerator:
             logger.warning(f"⚠️ Failed to create timeline chart: {e}")
             plt.close()
             return None
-    
+
     async def _create_summary_chart(self, analysis_data: Dict[str, Any], report_dir: str) -> Optional[str]:
-        """Create summary statistics chart"""
+        """Create summary statistics chart with Nord theme"""
         try:
-            # FIX: Get stats from correct structure
             stats = analysis_data.get("summary_statistics", {})
-            current_period = analysis_data.get("current_period", {})
             
             if not stats:
                 return None
             
-            # Prepare data for summary chart using correct field names
+            # Prepare data for summary chart
             metrics = []
             values = []
             
-            if stats.get("total_requests"):
-                metrics.append("Total Requests")
-                values.append(stats["total_requests"])
+            metric_mapping = [
+                ("total_requests", "Total Requests"),
+                ("unique_countries", "Countries"),
+                ("unique_cities", "Cities"),
+                ("unique_ips", "IPs"),
+                ("unique_sensors", "Sensors"),
+                ("unique_isps", "ISPs")
+            ]
             
-            if stats.get("unique_countries"):
-                metrics.append("Countries")
-                values.append(stats["unique_countries"])
-
-            if stats.get("unique_cities"):
-                metrics.append("Cities")
-                values.append(stats["unique_cities"])      
-
-            if stats.get("unique_ips"):
-                metrics.append("IPs")
-                values.append(stats["unique_ips"])                            
-            
-            if stats.get("unique_sensors"):
-                metrics.append("Sensors")
-                values.append(stats["unique_sensors"])
-                
-            if stats.get("unique_isps"):
-                metrics.append("ISPs")
-                values.append(stats["unique_isps"])
-        
+            for key, label in metric_mapping:
+                if stats.get(key):
+                    metrics.append(label)
+                    values.append(stats[key])
             
             if not metrics:
                 return None
             
-            plt.figure(figsize=(12, 6))
-            bars = plt.bar(metrics, values, color=sns.color_palette("viridis", len(metrics)))
+            fig, ax = plt.subplots(figsize=(12, 6))
+            fig.patch.set_facecolor(self.NORD_COLORS['nord6'])
             
-            plt.title('Analysis Summary Statistics', fontsize=16, fontweight='bold')
-            plt.ylabel('Count / Volume', fontsize=12)
+            # Use alternating Nord colors
+            colors = [self.NORD_SEQUENCE[i % len(self.NORD_SEQUENCE)] for i in range(len(metrics))]
+            
+            bars = ax.bar(metrics, values, color=colors, 
+                        edgecolor=self.NORD_COLORS['nord1'], linewidth=0.8)
+            
+            ax.set_title('Analysis Summary Statistics', 
+                        fontsize=16, fontweight='bold', color=self.NORD_COLORS['nord0'], pad=20)
+            ax.set_ylabel('Count / Volume', fontsize=12, color=self.NORD_COLORS['nord1'])
+            
             plt.xticks(rotation=45, ha='right')
             
             # Add value labels on bars
@@ -522,13 +696,14 @@ class MarkdownGenerator:
                 else:
                     label = f'{value:.0f}'
                 
-                plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(values)*0.01,
-                        label, ha='center', va='bottom', fontweight='bold')
+                ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(values)*0.01,
+                    label, ha='center', va='bottom', fontweight='bold',
+                    color=self.NORD_COLORS['nord0'])
             
             plt.tight_layout()
             
             chart_path = os.path.join(report_dir, "summary_statistics_chart.png")
-            plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+            plt.savefig(chart_path, dpi=300, bbox_inches='tight', facecolor=self.NORD_COLORS['nord6'])
             plt.close()
             
             logger.info(f"📊 Summary chart saved: {chart_path}")
@@ -540,7 +715,7 @@ class MarkdownGenerator:
             return None
 
     async def _create_isp_chart(self, analysis_data: Dict[str, Any], report_dir: str) -> Optional[str]:
-        """Create ISP distribution chart"""
+        """Create ISP distribution chart with Nord theme"""
         try:
             current_period = analysis_data.get("current_period", {})
             isp_analytics = current_period.get("isp_analytics", {})
@@ -555,22 +730,37 @@ class MarkdownGenerator:
             isps = [item[0] for item in sorted_isps]
             requests = [item[1] for item in sorted_isps]
             
-            plt.figure(figsize=(14, 8))
-            bars = plt.barh(isps, requests, color=sns.color_palette("plasma", len(isps)))
+            fig, ax = plt.subplots(figsize=(14, 8))
+            fig.patch.set_facecolor(self.NORD_COLORS['nord6'])
             
-            plt.title('Top 10 ISPs by Request Volume', fontsize=16, fontweight='bold')
-            plt.xlabel('Total Requests', fontsize=12)
-            plt.ylabel('ISP', fontsize=12)
+            # Create gradient effect with Nord colors
+            colors = []
+            for i in range(len(isps)):
+                if i < 3:  # Top 3 get special colors
+                    colors.append(self.NORD_COLORS['nord10'])  # Blue
+                elif i < 6:
+                    colors.append(self.NORD_COLORS['nord14'])  # Green
+                else:
+                    colors.append(self.NORD_COLORS['nord8'])   # Light blue
+            
+            bars = ax.barh(isps, requests, color=colors, 
+                        edgecolor=self.NORD_COLORS['nord1'], linewidth=0.5)
+            
+            ax.set_title('Top 10 ISPs by Request Volume', 
+                        fontsize=16, fontweight='bold', color=self.NORD_COLORS['nord0'], pad=20)
+            ax.set_xlabel('Total Requests', fontsize=12, color=self.NORD_COLORS['nord1'])
+            ax.set_ylabel('ISP', fontsize=12, color=self.NORD_COLORS['nord1'])
             
             # Add value labels on bars
             for bar, value in zip(bars, requests):
-                plt.text(bar.get_width() + max(requests)*0.01, bar.get_y() + bar.get_height()/2,
-                        f'{value:,}', ha='left', va='center', fontweight='bold')
+                ax.text(bar.get_width() + max(requests)*0.01, bar.get_y() + bar.get_height()/2,
+                    f'{value:,}', ha='left', va='center', fontweight='bold',
+                    color=self.NORD_COLORS['nord0'])
             
             plt.tight_layout()
             
             chart_path = os.path.join(report_dir, "isp_distribution_chart.png")
-            plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+            plt.savefig(chart_path, dpi=300, bbox_inches='tight', facecolor=self.NORD_COLORS['nord6'])
             plt.close()
             
             logger.info(f"📊 ISP chart saved: {chart_path}")
@@ -581,7 +771,6 @@ class MarkdownGenerator:
             plt.close()
             return None
 
-    
     async def _generate_markdown_content(
         self, 
         analysis_data: Dict[str, Any], 
@@ -620,11 +809,13 @@ class MarkdownGenerator:
         md_content.write("1. [Executive Summary](#executive-summary)\n")
         md_content.write("2. [Key Metrics](#key-metrics)\n")
         md_content.write("3. [Visual Analytics](#visual-analytics)\n")
-        md_content.write("4. [Geographic Analysis](#geographic-analysis)\n")
-        md_content.write("5. [Protocol Analysis](#protocol-analysis)\n")
-        md_content.write("6. [Security Assessment](#security-assessment)\n")
-        md_content.write("7. [Recommendations](#recommendations)\n")
-        md_content.write("8. [Detailed Data](#detailed-data)\n\n")
+        md_content.write("4. [IP Address Analysis](#ip-address-analysis)\n")
+        md_content.write("5. [Geographic Analysis](#geographic-analysis)\n")
+        md_content.write("6. [Sensor Analysis](#sensor-analysis)\n")
+        md_content.write("7. [ISP Analysis](#isp-analysis)\n")
+        md_content.write("8. [Security Assessment](#security-assessment)\n")
+        md_content.write("9. [Recommendations](#recommendations)\n")
+        md_content.write("10. [Detailed Data](#detailed-data)\n\n")
         
         # Executive Summary
         md_content.write("## Executive Summary\n\n")
@@ -657,9 +848,9 @@ class MarkdownGenerator:
                     md_content.write("### Geographic Traffic Distribution\n\n")
                     md_content.write(f"![Country Traffic Chart]({image_name})\n\n")
                     
-                elif "protocol" in image_name.lower():
-                    md_content.write("### Protocol Usage Distribution\n\n")
-                    md_content.write(f"![Protocol Usage Chart]({image_name})\n\n")
+                elif "sensor" in image_name.lower():
+                    md_content.write("### Sensor Usage Distribution\n\n")
+                    md_content.write(f"![Sensor Usage Chart]({image_name})\n\n")
                     
                 elif "timeline" in image_name.lower():
                     md_content.write("### Traffic Timeline\n\n")
@@ -668,9 +859,24 @@ class MarkdownGenerator:
                 elif "summary" in image_name.lower():
                     md_content.write("### Summary Statistics\n\n")
                     md_content.write(f"![Summary Statistics Chart]({image_name})\n\n")
+                    
+                elif "isp" in image_name.lower():
+                    md_content.write("### ISP Distribution\n\n")
+                    md_content.write(f"![ISP Distribution Chart]({image_name})\n\n")
+                    
+                elif "top_ips" in image_name.lower():
+                    md_content.write("### Top IP Addresses\n\n")
+                    md_content.write(f"![Top IPs Chart]({image_name})\n\n")
+                    
+                elif "ips_by_country" in image_name.lower():
+                    md_content.write("### IP Distribution by Country\n\n")
+                    md_content.write(f"![IPs by Country Chart]({image_name})\n\n")
+                    
+                elif "ips_by_sensor" in image_name.lower():
+                    md_content.write("### IP Distribution by Sensor\n\n")
+                    md_content.write(f"![IPs by Sensor Chart]({image_name})\n\n")
 
-
-        # IP Address Analysis (NEW SECTION)
+        # IP Address Analysis (FIXED SECTION)
         md_content.write("## IP Address Analysis\n\n")
 
         current_period = analysis_data.get("current_period", {})
@@ -694,48 +900,82 @@ class MarkdownGenerator:
                     md_content.write(f"| {i} | {ip} | {requests:,} | {percentage:.1f}% |\n")
                 md_content.write("\n")
             
-        # IPs by Country - FIXED VERSION
-        if ip_by_country:
-            md_content.write("### IP Distribution by Country\n\n")
-            md_content.write("| Country | Unique IPs | Top IP (Requests) |\n")
-            md_content.write("|---------|------------|-------------------|\n")
+            # IPs by Country - FIXED VERSION
+            if ip_by_country:
+                md_content.write("### IP Distribution by Country\n\n")
+                md_content.write("| Country | Unique IPs | Top IP (Requests) |\n")
+                md_content.write("|---------|------------|-------------------|\n")
+                
+                # Sort by unique IPs count
+                sorted_countries = []
+                for country, data in ip_by_country.items():
+                    if isinstance(data, dict):
+                        unique_count = data.get("unique_ips", 0)
+                        top_ip = data.get("top_ip", "N/A")
+                    elif isinstance(data, list):
+                        unique_count = len(data)
+                        top_ip = data[0] if data else "N/A"
+                    else:
+                        unique_count = 1
+                        top_ip = str(data)
+                    
+                    sorted_countries.append((country, unique_count, top_ip))
+                
+                sorted_countries.sort(key=lambda x: x[1], reverse=True)
+                
+                for country, unique_count, top_ip in sorted_countries[:10]:
+                    md_content.write(f"| {country} | {unique_count} | {top_ip} |\n")
+                md_content.write("\n")
             
-            for country, data in list(ip_by_country.items())[:10]:
-                unique_count = data.get("unique_ips", 0)
-                top_ip = data.get("top_ip", "N/A")
-                md_content.write(f"| {country} | {unique_count} | {top_ip} |\n")
-            md_content.write("\n")
-        
-        # IPs by Sensor - FIXED VERSION
-        if ip_by_sensor:
-            md_content.write("### IP Distribution by Sensor\n\n")
-            md_content.write("| Sensor | Unique IPs | Top IP (Requests) |\n")
-            md_content.write("|--------|------------|-------------------|\n")
+            # IPs by Sensor - FIXED VERSION
+            if ip_by_sensor:
+                md_content.write("### IP Distribution by Sensor\n\n")
+                md_content.write("| Sensor | Unique IPs | Top IP (Requests) |\n")
+                md_content.write("|--------|------------|-------------------|\n")
+                
+                for sensor, data in ip_by_sensor.items():
+                    if isinstance(data, dict):
+                        unique_count = data.get("unique_ips", 0)
+                        top_ip = data.get("top_ip", "N/A")
+                    elif isinstance(data, list):
+                        unique_count = len(data)
+                        top_ip = data[0] if data else "N/A"
+                    else:
+                        unique_count = 1
+                        top_ip = str(data)
+                    
+                    md_content.write(f"| {sensor} | {unique_count} | {top_ip} |\n")
+                md_content.write("\n")
             
-            for sensor, data in ip_by_sensor.items():
-                unique_count = data.get("unique_ips", 0)
-                top_ip = data.get("top_ip", "N/A")
-                md_content.write(f"| {sensor} | {unique_count} | {top_ip} |\n")
-            md_content.write("\n")
-        
-        # IPs by City - FIXED VERSION
-        if ip_by_city and len(ip_by_city) > 1:
-            md_content.write("### IP Distribution by City (Top 10)\n\n")
-            md_content.write("| City | Unique IPs | Top IP (Requests) |\n")
-            md_content.write("|------|------------|-------------------|\n")
-            
-            # Sort cities by unique IP count
-            sorted_cities = sorted(ip_by_city.items(), key=lambda x: x[1].get("unique_ips", 0), reverse=True)
-            
-            for city, data in sorted_cities[:10]:
-                unique_count = data.get("unique_ips", 0)
-                top_ip = data.get("top_ip", "N/A")
-                md_content.write(f"| {city} | {unique_count} | {top_ip} |\n")
-            md_content.write("\n")
+            # IPs by City - FIXED VERSION
+            if ip_by_city and len(ip_by_city) > 1:
+                md_content.write("### IP Distribution by City (Top 10)\n\n")
+                md_content.write("| City | Unique IPs | Top IP (Requests) |\n")
+                md_content.write("|------|------------|-------------------|\n")
+                
+                # Sort cities by unique IP count
+                sorted_cities = []
+                for city, data in ip_by_city.items():
+                    if isinstance(data, dict):
+                        unique_count = data.get("unique_ips", 0)
+                        top_ip = data.get("top_ip", "N/A")
+                    elif isinstance(data, list):
+                        unique_count = len(data)
+                        top_ip = data[0] if data else "N/A"
+                    else:
+                        unique_count = 1
+                        top_ip = str(data)
+                    
+                    sorted_cities.append((city, unique_count, top_ip))
+                
+                sorted_cities.sort(key=lambda x: x[1], reverse=True)
+                
+                for city, unique_count, top_ip in sorted_cities[:10]:
+                    md_content.write(f"| {city} | {unique_count} | {top_ip} |\n")
+                md_content.write("\n")
 
         else:
             md_content.write("No IP address data available in the current dataset.\n\n")
-
         
         # Geographic Analysis - FIX THE DATA SOURCE
         md_content.write("## Geographic Analysis\n\n")

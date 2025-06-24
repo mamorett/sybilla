@@ -270,17 +270,17 @@ class MCPClient:
             
             response = await self._call_server_simple(tool_request)
             
-            logger.info(f"🔍 IP search raw response: {response}")
-            logger.info(f"🔍 IP search response type: {type(response)}")
-            logger.info(f"🔍 IP search response keys: {list(response.keys()) if isinstance(response, dict) else 'not dict'}")
+            # logger.info(f"🔍 IP search raw response: {response}")
+            # logger.info(f"🔍 IP search response type: {type(response)}")
+            # logger.info(f"🔍 IP search response keys: {list(response.keys()) if isinstance(response, dict) else 'not dict'}")
             
             if "error" in response:
                 logger.error(f"❌ IP search error: {response['error']}")
                 return {"error": response["error"]}
             
             result = response.get("result", {})
-            logger.info(f"🔍 IP search result: {result}")
-            logger.info(f"🔍 IP search result type: {type(result)}")
+            # logger.info(f"🔍 IP search result: {result}")
+            # logger.info(f"🔍 IP search result type: {type(result)}")
             
             if "content" in result:
                 logger.info(f"🔍 IP search content found: {len(result['content'])} items")

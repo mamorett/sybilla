@@ -16,27 +16,19 @@ class NVIDIANIMClient:
         )
     
     async def analyze_logs(self, logs_data: Dict[str, Any], analysis_prompt: str) -> Dict[str, Any]:
-        """Analyze logs using NVIDIA NIM and parse the comprehensive response"""
+        """
+        Analyze logs using NVIDIA NIM with the provided prompt.
         
-        # Prepare the context with logs data
-        logs_summary = self._prepare_logs_summary(logs_data)
+        Args:
+            logs_data: The log data (passed for context but prompt should be complete)
+            analysis_prompt: Complete analysis prompt from scheduler
         
-        # Construct the full prompt - allow NIM to respond naturally
-        full_prompt = f"""
-{analysis_prompt}
-
-LOGS DATA TO ANALYZE:
-{logs_summary}
-
-Please provide a comprehensive analysis including:
-1. Executive summary and risk assessment
-2. Key findings and security insights
-3. Traffic patterns and anomalies
-4. Specific recommendations and next steps
-5. Data suitable for visualization (charts, graphs)
-
-You may format your response in any clear, structured way. Include both JSON data and additional explanatory text as needed.
-"""
+        Returns:
+            Parsed comprehensive response from NIM
+        """
+        
+        print(f"🔍 NIM CLIENT: Received prompt length: {len(analysis_prompt)} characters")
+        print(f"🔍 NIM CLIENT: Using prompt from scheduler (no modification)")
         
         try:
             response = await self.client.post(
@@ -50,7 +42,7 @@ You may format your response in any clear, structured way. Include both JSON dat
                         },
                         {
                             "role": "user",
-                            "content": full_prompt
+                            "content": analysis_prompt  # Use ONLY the prompt from scheduler
                         }
                     ],
                     "temperature": 0.1,
@@ -62,11 +54,13 @@ You may format your response in any clear, structured way. Include both JSON dat
             result = response.json()
             content = result["choices"][0]["message"]["content"]
             
-            print(f"🔍 NIM CONTENT LENGTH: {len(content) if content else 0}")
-            print(f"🔍 NIM CONTENT (first 300 chars): '{content[:300] if content else 'None'}'")
+            print(f"🔍 NIM RESPONSE LENGTH: {len(content) if content else 0}")
+            print(f"🔍 NIM RESPONSE (first 300 chars): '{content[:300] if content else 'None'}'")
 
             # Parse the comprehensive response
             parsed_response = self._parse_comprehensive_response(content)
+            print(f"✅ NIM CLIENT: Parsed response with {len(parsed_response)} fields")
+            
             return parsed_response
             
         except Exception as e:
@@ -84,10 +78,10 @@ You may format your response in any clear, structured way. Include both JSON dat
         
         # Combine into a comprehensive response
         comprehensive_response = {
-            # Core analysis from JSON
+            # Core analysis from JSON (with fallbacks)
             "executive_summary": json_data.get("executive_summary", "Analysis completed"),
             "risk_level": json_data.get("risk_level", "Medium"),
-            "security_analysis": json_data.get("security_analysis", {}),
+            "security_analysis": json_data.get("security_analysis", "Security analysis completed"),
             "key_findings": json_data.get("key_findings", []),
             "recommendations": json_data.get("recommendations", []),
             "next_steps": json_data.get("next_steps", []),
@@ -106,7 +100,8 @@ You may format your response in any clear, structured way. Include both JSON dat
             "response_type": "comprehensive",
             "has_json": bool(json_data),
             "has_additional_content": bool(additional_content),
-            "raw_response_length": len(content)
+            "raw_response_length": len(content),
+            "raw_response": content  # Keep full response for debugging
         }
         
         return comprehensive_response
@@ -205,55 +200,6 @@ You may format your response in any clear, structured way. Include both JSON dat
             print(f"⚠️ Error parsing additional sections: {e}")
         
         return sections
-
-    def _prepare_logs_summary(self, logs_data: Dict[str, Any]) -> str:
-        """Prepare a summary of logs data for analysis"""
-        
-        if not logs_data:
-            return "No logs data available"
-        
-        current_period = logs_data.get("current_period", {})
-        summary_stats = logs_data.get("summary_statistics", {})
-        
-        # Get country data
-        country_analytics = current_period.get("country_analytics", {})
-        country_distribution = country_analytics.get("country_distribution", {})
-        
-        # Get sensor data
-        sensor_analytics = current_period.get("sensor_analytics", {})
-        sensor_distribution = sensor_analytics.get("sensor_distribution", {})
-        
-        # Get ISP data
-        isp_analytics = current_period.get("isp_analytics", {})
-        isp_distribution = isp_analytics.get("isp_distribution", {})
-        
-        summary = f"""
-LOGS ANALYSIS SUMMARY:
-Total requests: {summary_stats.get('total_requests', 0):,}
-Unique countries: {summary_stats.get('unique_countries', 0)}
-Unique sensors: {summary_stats.get('unique_sensors', 0)}
-Unique ISPs: {summary_stats.get('unique_isps', 0)}
-
-TOP COUNTRIES BY TRAFFIC:
-{self._format_distribution(country_distribution, 10)}
-
-SENSOR DISTRIBUTION:
-{self._format_distribution(sensor_distribution, 10)}
-
-TOP ISPs:
-{self._format_distribution(isp_distribution, 10)}
-
-TIME RANGE: {current_period.get('time_range', 'Unknown')}
-"""
-        return summary
-
-    def _format_distribution(self, distribution: Dict[str, int], limit: int) -> str:
-        """Format distribution data for display"""
-        if not distribution:
-            return "  No data available"
-        
-        sorted_items = sorted(distribution.items(), key=lambda x: x[1], reverse=True)
-        return "\n".join([f"  {item}: {count:,}" for item, count in sorted_items[:limit]])
 
     async def close(self):
         await self.client.aclose()
