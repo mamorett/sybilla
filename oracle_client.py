@@ -13,10 +13,10 @@ from models import LogEntry
 
 class OracleLogsClient:
     def __init__(self):
-        """Initialize Oracle Cloud connection only"""
+        """Initialize Oracle Cloud connection with support for both config file and instance principals"""
         try:
-            # Initialize Oracle Cloud clients
-            self.config = oci.config.from_file()
+            # Try to initialize Oracle Cloud clients with fallback authentication
+            self.config = self._get_oci_config()
             
             # Retrieve Oracle Cloud identifiers from environment variables
             self.compartment_id = os.getenv("OCI_COMPARTMENT_ID")
@@ -33,7 +33,8 @@ class OracleLogsClient:
             self.logging_client = LoggingManagementClient(self.config) 
             self.search_client = LogSearchClient(self.config) 
             
-            print("✅ Oracle Cloud connection initialized successfully")
+            auth_method = "Instance Principals" if hasattr(self.config, 'signer') else "Config File"
+            print(f"✅ Oracle Cloud connection initialized successfully using {auth_method}")
             print(f"📋 Targeting Compartment: {self.compartment_id}")
             print(f"📋 Targeting Log Group: {self.log_group_id}")
             print(f"📋 Targeting Log: {self.log_id}")
@@ -41,6 +42,30 @@ class OracleLogsClient:
         except Exception as e:
             print(f"❌ Failed to initialize Oracle Cloud connection: {e}")
             raise
+
+    def _get_oci_config(self):
+        """Get OCI configuration with fallback from config file to instance principals"""
+        try:
+            # First, try to load from config file
+            config = oci.config.from_file()
+            print("🔑 Using OCI config file authentication")
+            return config
+        except Exception as config_error:
+            print(f"⚠️ Config file authentication failed: {config_error}")
+            try:
+                # Fallback to instance principals
+                signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
+                config = {'region': signer.region, 'signer': signer}
+                print("🔑 Using Instance Principals authentication")
+                return config
+            except Exception as instance_error:
+                print(f"❌ Instance Principals authentication failed: {instance_error}")
+                raise Exception(
+                    f"Both authentication methods failed. "
+                    f"Config file error: {config_error}. "
+                    f"Instance principals error: {instance_error}"
+                )
+
     
     def _build_base_query(self) -> str:
         """Build the base query targeting the specific log"""
