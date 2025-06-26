@@ -16,7 +16,7 @@ class OracleLogsClient:
         """Initialize Oracle Cloud connection with support for both config file and instance principals"""
         try:
             # Try to initialize Oracle Cloud clients with fallback authentication
-            self.config = self._get_oci_config()
+            self.config, self.signer = self._get_oci_auth()
             
             # Retrieve Oracle Cloud identifiers from environment variables
             self.compartment_id = os.getenv("OCI_COMPARTMENT_ID")
@@ -30,10 +30,10 @@ class OracleLogsClient:
                 )
 
             # Initialize OCI clients after config and IDs are loaded
-            self.logging_client = LoggingManagementClient(self.config) 
-            self.search_client = LogSearchClient(self.config) 
+            self.logging_client = LoggingManagementClient(self.config, signer=self.signer)
+            self.search_client = LogSearchClient(self.config, signer=self.signer)
             
-            auth_method = "Instance Principals" if hasattr(self.config, 'signer') else "Config File"
+            auth_method = "Instance Principals" if self.signer else "Config File"
             print(f"✅ Oracle Cloud connection initialized successfully using {auth_method}")
             print(f"📋 Targeting Compartment: {self.compartment_id}")
             print(f"📋 Targeting Log Group: {self.log_group_id}")
@@ -43,21 +43,21 @@ class OracleLogsClient:
             print(f"❌ Failed to initialize Oracle Cloud connection: {e}")
             raise
 
-    def _get_oci_config(self):
-        """Get OCI configuration with fallback from config file to instance principals"""
+    def _get_oci_auth(self) -> tuple[dict, oci.auth.signers.BaseSigner | None]:
+        """Get OCI configuration and signer, with fallback from config file to instance principals"""
         try:
             # First, try to load from config file
             config = oci.config.from_file()
             print("🔑 Using OCI config file authentication")
-            return config
+            return config, None
         except Exception as config_error:
             print(f"⚠️ Config file authentication failed: {config_error}")
             try:
                 # Fallback to instance principals
                 signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
-                config = {'region': signer.region, 'signer': signer}
+                config = {'region': signer.region}
                 print("🔑 Using Instance Principals authentication")
-                return config
+                return config, signer
             except Exception as instance_error:
                 print(f"❌ Instance Principals authentication failed: {instance_error}")
                 raise Exception(
