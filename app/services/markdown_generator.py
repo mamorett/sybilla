@@ -11,6 +11,8 @@ import seaborn as sns
 import pandas as pd
 from io import StringIO
 import numpy as np
+from app.config import settings
+
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -1082,8 +1084,9 @@ class MarkdownGenerator:
         md_content.write("## Detailed Data\n\n")
         md_content.write("### Analysis Metadata\n\n")
         md_content.write(f"- **Analysis Method:** {nim_analysis.get('analysis_method', 'Standard Analysis')}\n")
+        md_content.write(f"- **NVIDIA Model:** {settings.NVIDIA_MODEL}\n")
         md_content.write(f"- **Confidence Level:** {nim_analysis.get('confidence', 'Medium')}\n")
-        md_content.write(f"- **Data Time Range:** {analysis_data.get('time_range', '24 hours')}\n")
+        md_content.write(f"- **Data Time Range:** {analysis_data.get('time_range', '1 hour')}\n")
         md_content.write(f"- **Report Generated:** {datetime.now().isoformat()}\n\n")
         
         # Footer
