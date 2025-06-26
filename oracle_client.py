@@ -1,9 +1,9 @@
-from typing import List, Dict, Any
-from datetime import datetime, timedelta
 import json
 import os
+from datetime import datetime, timedelta
+from typing import Any, Dict, List
+
 import oci
-from oci import config
 from oci.logging import LoggingManagementClient
 from oci.loggingsearch import LogSearchClient
 from oci.loggingsearch.models import SearchLogsDetails
