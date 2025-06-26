@@ -18,6 +18,8 @@ COPY --chown=app:app app ./app
 COPY --chown=app:app static ./static
 COPY --chown=app:app templates ./templates
 COPY --chown=app:app server.py .
+COPY --chown=app:app models.py .
+COPY --chown=app:app oracle_client.py .
 COPY --chown=app:app start.sh .
 
 # Make start script executable
