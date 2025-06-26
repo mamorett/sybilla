@@ -1,5 +1,5 @@
 import oci
-from typing import Optional
+from typing import Optional, Union
 from app.config import settings
 import logging
 
@@ -24,7 +24,7 @@ class OCIStorageClient:
             else:
                 raise
 
-    def _get_oci_auth(self) -> tuple[dict, oci.auth.signers.BaseSigner | None]:
+    def _get_oci_auth(self) -> tuple[dict, Optional[oci.auth.signers.InstancePrincipalsSecurityTokenSigner]]:
         """Get OCI configuration and signer, with fallback from config file to instance principals"""
         try:
             config = oci.config.from_file(settings.OCI_CONFIG_FILE, settings.OCI_PROFILE)

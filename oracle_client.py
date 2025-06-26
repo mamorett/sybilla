@@ -1,7 +1,7 @@
 import json
 import os
 from datetime import datetime, timedelta
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Union
 
 import oci
 from oci.logging import LoggingManagementClient
@@ -43,7 +43,7 @@ class OracleLogsClient:
             print(f"❌ Failed to initialize Oracle Cloud connection: {e}")
             raise
 
-    def _get_oci_auth(self) -> tuple[dict, oci.auth.signers.BaseSigner | None]:
+    def _get_oci_auth(self) -> tuple[dict, Optional[oci.auth.signers.InstancePrincipalsSecurityTokenSigner]]:
         """Get OCI configuration and signer, with fallback from config file to instance principals"""
         try:
             # First, try to load from config file
@@ -121,7 +121,6 @@ class OracleLogsClient:
             query += f" | limit {params['limit']}"
             
         return query
-
 
     def _build_sensor_query(self, sensor: str, params: Dict[str, Any]) -> str:
         query = self._build_base_query()
@@ -268,57 +267,6 @@ class OracleLogsClient:
         
         return log_entries
 
-
-    def _process_analytics(self, oracle_logs: List[Dict], group_by: str) -> Dict[str, Any]:
-        """Process logs into analytics summary"""
-        from collections import Counter
-        
-        unique_ips = set()
-        grouped_data = []
-        sensors = []
-        countries = []
-        cities = []
-        isps = []
-        
-        for oracle_log in oracle_logs:
-            try:
-                data = oracle_log.get('logContent', {}).get('data', {})
-                
-                unique_ips.add(data.get('IP', ''))
-                sensors.append(data.get('Sensor', ''))
-                countries.append(data.get('Country', ''))
-                cities.append(data.get('City', ''))
-                isps.append(data.get('ISP', ''))
-                
-                # Group by requested field
-                if group_by == 'country':
-                    grouped_data.append(data.get('Country', 'Unknown'))
-                elif group_by == 'city':
-                    grouped_data.append(f"{data.get('City', 'Unknown')}, {data.get('Country', '')}")
-                elif group_by == 'isp':
-                    grouped_data.append(data.get('ISP', 'Unknown'))
-                elif group_by == 'sensor':
-                    grouped_data.append(data.get('Sensor', 'Unknown'))
-                    
-            except Exception as e:
-                print(f"Error processing log for analytics: {e}")
-                continue
-        
-        grouped_counter = Counter(grouped_data)
-        sensor_counter = Counter(sensors)
-        
-        return {
-            'unique_ips': len(unique_ips),
-            'unique_countries': len(set(countries)),
-            'unique_cities': len(set(cities)),
-            f'top_{group_by}': [
-                {'name': item, 'count': count} 
-                for item, count in grouped_counter.most_common(10)
-            ],
-            'sensor_distribution': dict(sensor_counter.most_common()),
-            'top_isps': [isp for isp, _ in Counter(isps).most_common(5)]
-        }
-    
     def _parse_time_range(self, time_range: str) -> tuple[datetime, datetime]:
         """Parse time range string like '24h', '7d', '1w' into datetime objects"""
         now = datetime.utcnow()
@@ -376,8 +324,6 @@ class OracleLogsClient:
         analytics['query_used'] = base_query  # For debugging
         
         return analytics
-
-
 
     def _process_analytics(self, oracle_logs: List[Dict], group_by: str) -> Dict[str, Any]:
         """Enhanced analytics processing with better grouping"""
