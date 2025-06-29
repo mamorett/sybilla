@@ -38,7 +38,6 @@ class AnalysisScheduler:
         logger.info(f"⏰ Analysis Interval: {settings.ANALYSIS_INTERVAL_HOURS} hour(s)")
     
 
-
     def _create_analysis_prompt(self, analysis_data: Dict[str, Any]) -> str:
         """Create a comprehensive analysis prompt for NIM - REENGINEERED FOR COMMAND GENERATION"""
         
@@ -93,21 +92,6 @@ class AnalysisScheduler:
         # Create explicit IP list for commands
         suspicious_ips_formatted = "\n".join([f"  - {ip}" for ip in suspicious_ip_list]) if suspicious_ip_list else "  - None detected."
         
-        # PRE-GENERATE the exact commands we want
-        if suspicious_ip_list:
-            expected_commands = [f"iptables -A INPUT -s {ip} -j DROP" for ip in suspicious_ip_list]
-            expected_commands.extend([
-                "iptables -L INPUT -n | grep DROP",
-                "iptables-save > /etc/iptables/rules.v4",
-                "systemctl restart iptables"
-            ])
-            commands_example = '",\n        "'.join(expected_commands)
-        else:
-            expected_commands = [
-                "iptables -L INPUT -n"
-            ]
-            commands_example = '",\n        "'.join(expected_commands) 
-        
         prompt = f"""You are a cybersecurity analyst. Analyze this log data and provide actionable security recommendations with specific commands.
 
     ## CRITICAL: You MUST provide a JSON response with the exact structure shown below.
@@ -143,55 +127,32 @@ class AnalysisScheduler:
 
     You MUST respond with a JSON object containing these exact fields:
 
-    ```json
+    Provide your response as JSON with this structure:
+
     {{
-        "executive_summary": "Brief 2-3 sentence summary of findings and risk level",
+        "executive_summary": "Brief summary of security findings",
         "risk_level": "Low|Medium|High|Critical",
-        "security_analysis": "Detailed analysis of threats and security concerns",
+        "security_analysis": "Analysis of the threats detected",
         "key_findings": [
-            "List of 3-5 most important observations",
-            "Include specific IP addresses and threat types",
-            "Mention geographic anomalies"
+            "Important observations about the suspicious activity"
         ],
         "recommendations": [
-            "List of 3-5 specific actionable recommendations",
-            "Include immediate and long-term actions",
-            "Reference the suspicious IPs found"
+            "Security recommendations based on findings"
         ],
         "suggested_commands": [
-            "{commands_example}"
-        ],        
-        "immediate_actions": [
-            "List urgent actions to take within 24 hours",
-            "Include investigation steps for specific IPs"
+            "iptables commands for INPUT and FORWARD chains for each suspicious IP"
         ],
-        "confidence": "High|Medium|Low",
-        "analysis_method": "NVIDIA NIM Analysis of Oracle Cloud logs"
+        "immediate_actions": [
+            "Urgent actions to take"
+        ],
+        "confidence": "High|Medium|Low"
     }}
 
-    ```
+    For the suggested_commands section, generate iptables rules for both INPUT and FORWARD chains for these suspicious IPs: {suspicious_ips_text}
 
-    **In the supplementary text outside the JSON block, you can provide:**
-    -   Further explanations of your findings.
-    -   Deeper insights into the traffic patterns.
-    -   Context for your recommendations.
-
-    COMMAND GENERATION RULES:
-    - MANDATORY: Generate iptables -A INPUT -s <IP> -j DROP for EVERY IP in the suspicious list above
-    - If no suspicious IPs: Provide monitoring commands instead
-    - Always include: At least 3-5 actionable commands
-    - Format: Each command must be a complete, executable bash command string
-    SPECIFIC REQUIREMENTS:
-    - Risk Assessment: Evaluate based on SSH access from unexpected locations and multi-sensor scanning
-    - Geographic Analysis: Flag connections from outside expected regions (Budapest area expected for SSH)
-    - Command Priority: Block suspicious IPs first, then add monitoring commands
-    - Actionable Focus: Every recommendation must have a corresponding command or investigation step
-    EXAMPLE COMMANDS TO INCLUDE:
-    - iptables -A INPUT -s 198.55.98.176 -j DROP (for each suspicious IP)
-    - iptables -L INPUT -n | grep DROP (to verify blocks)
-    - tail -f /var/log/auth.log | grep "Failed password" (for SSH monitoring)
-    - netstat -an | grep :22 | grep ESTABLISHED (check active SSH connections)
-    Generate your analysis focusing on the {len(suspicious_ip_list)} suspicious IPs detected and provide immediate blocking commands for each one."""  
+    Example format for commands:
+    - iptables -A INPUT -s IP_ADDRESS -j DROP
+    - iptables -A FORWARD -s IP_ADDRESS -j DROP""" 
         
         return prompt.strip()
 
