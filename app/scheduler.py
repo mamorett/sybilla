@@ -387,11 +387,17 @@ class AnalysisScheduler:
 
                 # Use AI analysis if available, otherwise use automated
                 if nim_analysis and isinstance(nim_analysis, dict):
-                    logger.info("✅ Security analysis ready for report generation")                
-                    # Merge AI analysis with our guaranteed commands
-                    nim_analysis["suggested_commands"] = automated_analysis["suggested_commands"]
+                    logger.info("✅ Security analysis ready for report generation")
+                    # Log what AI provided
+                    if "suggested_commands" in nim_analysis:
+                        logger.info(f"🤖 AI provided {len(nim_analysis['suggested_commands'])} commands:")
+                        for i, cmd in enumerate(nim_analysis['suggested_commands'][:3]):  # Log first 3
+                            logger.info(f"  {i+1}. {cmd}")
+                    else:
+                        logger.warning("⚠️ AI response missing suggested_commands")
+                        nim_analysis["suggested_commands"] = automated_analysis["suggested_commands"]                                  
                     # Ensure we have all required fields
-                    for key in ["executive_summary", "risk_level", "key_findings", "recommendations"]:
+                    for key in ["executive_summary", "risk_level", "key_findings", "recommendations", "suggested_commands"]:
                         if key not in nim_analysis:
                             nim_analysis[key] = automated_analysis[key]
                 else:
