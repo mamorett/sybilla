@@ -185,6 +185,18 @@ class MarkdownGenerator:
             logger.error(f"❌ Error type: {type(e).__name__}")
             raise
 
+    def _get_system_info(self) -> Dict[str, Any]:
+        """Get system information for the report"""
+        import socket
+        import platform
+        
+        return {
+            'hostname': socket.gethostname(),
+            'platform': platform.system(),
+            'timestamp': datetime.now().isoformat(),
+            'report_id': f"oci-analysis-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        }
+
     def _validate_and_fix_data(self, data: Any, data_name: str) -> Dict[str, Any]:
         """Validate and fix data format issues"""
         logger.info(f"🔍 Validating {data_name}: type={type(data)}")
