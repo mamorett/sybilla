@@ -208,6 +208,56 @@ class MarkdownGenerator:
             'report_id': f"oci-analysis-{now.strftime('%Y%m%d-%H%M%S')}"
         }
 
+    def _generate_commands_section(self, commands: List[str]) -> str:
+        """Generate the suggested commands section with Nord theme styling"""
+        if not commands:
+            return ""
+        
+        section = StringIO()
+        section.write("## 🔧 Suggested Commands\n\n")
+        section.write("Execute these commands to address the identified security issues:\n\n")
+        
+        # Add warning box
+        section.write("⚠️ **IMPORTANT SECURITY NOTICE**\n")
+        section.write("> - **Review each command carefully before execution**\n")
+        section.write("> - **Test in a development environment first**\n") 
+        section.write("> - **Ensure you have proper backups**\n")
+        section.write("> - **Verify commands match your security policies**\n")
+        section.write("> - **Execute with appropriate privileges**\n\n")
+        
+        # Commands in code block
+        section.write("### Commands to Execute\n\n")
+        section.write("```bash\n")
+        for i, cmd in enumerate(commands, 1):
+            section.write(f"# Command {i}\n")
+            section.write(f"{cmd}\n\n")
+        section.write("```\n\n")
+        
+        # Additional guidance
+        section.write("### Execution Guidelines\n\n")
+        section.write("1. **Backup Current Rules**: Save existing iptables rules before making changes\n")
+        section.write("   ```bash\n")
+        section.write("   iptables-save > /backup/iptables-backup-$(date +%Y%m%d-%H%M%S).rules\n")
+        section.write("   ```\n\n")
+        
+        section.write("2. **Test Connectivity**: Ensure you have alternative access before blocking IPs\n\n")
+        
+        section.write("3. **Verify Rules**: Check that rules are applied correctly\n")
+        section.write("   ```bash\n")
+        section.write("   iptables -L -n -v\n")
+        section.write("   ```\n\n")
+        
+        section.write("4. **Make Persistent**: Save rules to survive reboots\n")
+        section.write("   ```bash\n")
+        section.write("   # On Ubuntu/Debian:\n")
+        section.write("   iptables-save > /etc/iptables/rules.v4\n")
+        section.write("   \n")
+        section.write("   # On RHEL/CentOS:\n")
+        section.write("   service iptables save\n")
+        section.write("   ```\n\n")
+        
+        return section.getvalue()
+
 
     def _validate_and_fix_data(self, data: Any, data_name: str) -> Dict[str, Any]:
         """Validate and fix data format issues"""
@@ -843,6 +893,7 @@ class MarkdownGenerator:
         md_content.write("7. [ISP Analysis](#isp-analysis)\n")
         md_content.write("8. [Security Assessment](#security-assessment)\n")
         md_content.write("9. [Recommendations](#recommendations)\n")
+        md_content.write("10. [🔧 Suggested Commands](#-suggested-commands)\n")
         md_content.write("10. [Detailed Data](#detailed-data)\n\n")
         
         # Executive Summary
@@ -1092,7 +1143,18 @@ class MarkdownGenerator:
             md_content.write("- Review access logs regularly for security threats\n")
             md_content.write("- Implement automated alerting for unusual traffic spikes\n")
             md_content.write("- Consider geographic access controls based on traffic patterns\n\n")
+
+        # Suggested Commands
+        if nim_analysis.get("suggested_commands"):
+            logger.info(f"📝 Adding {len(nim_analysis['suggested_commands'])} commands to markdown report")
+            commands_section = self._generate_commands_section(nim_analysis["suggested_commands"])
+            md_content.write(commands_section)
+        else:
+            logger.warning("⚠️ No suggested_commands found in nim_analysis for markdown report")
+            # Debug what keys are available
+            logger.info(f"🔍 Available nim_analysis keys: {list(nim_analysis.keys())}")
         
+
         # Next Steps
         if nim_analysis.get("next_steps"):
             md_content.write("### Next Steps\n\n")
