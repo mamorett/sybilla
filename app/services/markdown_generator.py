@@ -184,18 +184,30 @@ class MarkdownGenerator:
             logger.error(f"❌ Failed to generate Markdown report: {e}")
             logger.error(f"❌ Error type: {type(e).__name__}")
             raise
-
+    
     def _get_system_info(self) -> Dict[str, Any]:
         """Get system information for the report"""
         import socket
         import platform
+        import os
+        
+        now = datetime.now()
+        
+        # Get physical hostname from environment variable
+        physical_hostname = os.getenv('PHYSICAL_HOSTNAME')
+        if not physical_hostname:
+            # Fallback to container hostname if env var not set
+            physical_hostname = socket.gethostname()
         
         return {
-            'hostname': socket.gethostname(),
+            'hostname': physical_hostname,  # Real physical server hostname
+            'container_name': socket.gethostname(),  # Pod name for reference
             'platform': platform.system(),
-            'timestamp': datetime.now().isoformat(),
-            'report_id': f"oci-analysis-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+            'timestamp': now.isoformat(),
+            'timestamp_str': now.strftime('%Y-%m-%d %H:%M:%S UTC'),
+            'report_id': f"oci-analysis-{now.strftime('%Y%m%d-%H%M%S')}"
         }
+
 
     def _validate_and_fix_data(self, data: Any, data_name: str) -> Dict[str, Any]:
         """Validate and fix data format issues"""
