@@ -38,6 +38,7 @@ class AnalysisScheduler:
         logger.info(f"⏰ Analysis Interval: {settings.ANALYSIS_INTERVAL_HOURS} hour(s)")
     
 
+
     def _create_analysis_prompt(self, analysis_data: Dict[str, Any]) -> str:
         """Create a comprehensive analysis prompt for NIM - REENGINEERED FOR COMMAND GENERATION"""
         
@@ -91,6 +92,7 @@ class AnalysisScheduler:
         
         # Create explicit IP list for commands
         suspicious_ips_formatted = "\n".join([f"  - {ip}" for ip in suspicious_ip_list]) if suspicious_ip_list else "  - None detected."
+    
         
         prompt = f"""You are a cybersecurity analyst. Analyze this log data and provide actionable security recommendations with specific commands.
 
@@ -127,32 +129,38 @@ class AnalysisScheduler:
 
     You MUST respond with a JSON object containing these exact fields:
 
-    Provide your response as JSON with this structure:
-
+    ```json
     {{
-        "executive_summary": "Brief summary of security findings",
+        "executive_summary": "Brief 2-3 sentence summary of findings and risk level",
         "risk_level": "Low|Medium|High|Critical",
-        "security_analysis": "Analysis of the threats detected",
+        "security_analysis": "Detailed analysis of threats and security concerns",
         "key_findings": [
-            "Important observations about the suspicious activity"
+            "List of 3-5 most important observations",
+            "Include specific IP addresses and threat types",
+            "Mention geographic anomalies"
         ],
         "recommendations": [
-            "Security recommendations based on findings"
+            "List of 3-5 specific actionable recommendations",
+            "Include immediate and long-term actions",
+            "Reference the suspicious IPs found"
         ],
         "suggested_commands": [
-            "iptables commands for INPUT and FORWARD chains for each suspicious IP"
-        ],
+            "generate iptables command for INPUT and FORWARD chains for the following IPs: {suspicious_ips_formatted} and {ssh_violators_list}"
+        ],        
         "immediate_actions": [
-            "Urgent actions to take"
+            "List urgent actions to take within 24 hours",
+            "Include investigation steps for specific IPs"
         ],
-        "confidence": "High|Medium|Low"
+        "confidence": "High|Medium|Low",
+        "analysis_method": "NVIDIA NIM Analysis of Oracle Cloud logs"
     }}
 
-    For the suggested_commands section, generate iptables rules for both INPUT and FORWARD chains for these suspicious IPs: {suspicious_ips_text}
+    ```
 
     Example format for commands:
     - iptables -A INPUT -s IP_ADDRESS -j DROP
-    - iptables -A FORWARD -s IP_ADDRESS -j DROP""" 
+    - iptables -A FORWARD -s IP_ADDRESS -j DROP
+    Generate your analysis focusing on the {len(suspicious_ip_list)} suspicious IPs detected and provide immediate blocking commands for each one."""  
         
         return prompt.strip()
 
